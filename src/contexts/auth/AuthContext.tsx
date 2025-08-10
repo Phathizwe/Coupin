@@ -1,83 +1,216 @@
-import React, { createContext, useEffect } from 'react';
+import React, { createContext, useState, useEffect, ReactNode } from 'react';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '../../config/firebase';
-import { 
-  AuthContextType, 
-  defaultContextValue,
-  ExtendedUser
-} from './types/extendedTypes';
-import { useAuthMethods } from './hooks/useAuthMethodsOriginal'; // Use the compatibility version
-import { useSocialAuth } from './hooks/useSocialAuth';
-import { useBusinessAndUtilityMethods } from './hooks/useBusinessAndUtilityMethods';
-
-export const AuthContext = createContext<AuthContextType>(defaultContextValue);
-
-// Export ExtendedUser directly
-export type { ExtendedUser };
-
-export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Get core authentication methods
-  const {
-    user,
-    setUser,
-    isLoading,
-    setIsLoading,
-    businessProfile,
-    setBusinessProfile,
-    userBusinesses,
-    setUserBusinesses,
-    handleUserData,
-    login,
-    register
-  } = useAuthMethods();
-
-  // Get social authentication methods
-  const {
-    googleSignIn,
-    facebookSignIn,
-    microsoftSignIn,
-    linkedInSignIn
-  } = useSocialAuth(handleUserData);
-
-  // Get business and utility methods
-  const {
-    logout,
-    resetPassword,
+import { AuthContextType, ExtendedUser, defaultContextValue } from './types';
+import { BusinessProfile } from '../../types';
+import {
+  loginWithEmail,
+  registerUser,
+  logoutUser,
+  resetUserPassword,
+  socialSignIn,
     switchBusiness,
     fetchUserBusinesses,
-    checkForInvitations
-  } = useBusinessAndUtilityMethods(user, setUser, setBusinessProfile, setUserBusinesses);
+  checkForInvitations,
+    handleUserData
+} from './authServices';
 
-  // Initialize auth state listener
+// Create the context with default values
+export const AuthContext = createContext<AuthContextType>(defaultContextValue);
+
+interface AuthProviderProps {
+  children: ReactNode;
+}
+
+export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
+  const [user, setUser] = useState<ExtendedUser | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [businessProfile, setBusinessProfile] = useState<BusinessProfile | null>(null);
+  const [userBusinesses, setUserBusinesses] = useState<BusinessProfile[]>([]);
+
+  // Listen for auth state changes
   useEffect(() => {
-    console.log('Setting up auth state listener');
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      console.log('Auth state changed:', currentUser?.uid);
-      
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       try {
-        if (currentUser) {
-          await handleUserData(currentUser);
+        if (firebaseUser) {
+          console.log('Auth state changed: User is signed in');
+          const extendedUser = await handleUserData(firebaseUser);
+          
+          if (extendedUser) {
+            setUser(extendedUser);
+            
+            // Set business profile if available
+            if (extendedUser.businessProfile) {
+              setBusinessProfile(extendedUser.businessProfile);
+            } else {
+              setBusinessProfile(null);
+            }
+            
+            // Fetch user businesses
+            const businesses = await fetchUserBusinesses(extendedUser.uid);
+            setUserBusinesses(businesses);
+          } else {
+            console.error('Failed to get extended user data');
+            setUser(null);
+            setBusinessProfile(null);
+            setUserBusinesses([]);
+          }
         } else {
-          console.log('No user is signed in');
+          console.log('Auth state changed: User is signed out');
           setUser(null);
           setBusinessProfile(null);
           setUserBusinesses([]);
-          setIsLoading(false);
         }
       } catch (error) {
         console.error('Error in auth state change handler:', error);
-        // Ensure loading state is turned off even if there's an error
+        setUser(null);
+        setBusinessProfile(null);
+        setUserBusinesses([]);
+      } finally {
         setIsLoading(false);
       }
     });
 
-    return () => {
-      console.log('Cleaning up auth state listener');
-      unsubscribe();
-    };
-  }, [handleUserData, setUser, setBusinessProfile, setUserBusinesses, setIsLoading]);
+    return () => unsubscribe();
+  }, []);
 
-  const value = {
+  // Login with email and password
+  const login = async (email: string, password: string) => {
+    try {
+      const user = await loginWithEmail(email, password);
+      return user;
+    } catch (error) {
+      throw error;
+    }
+  };
+
+  // Register with email and password
+  const register = async (
+    email: string, 
+    password: string, 
+    name: string, 
+    role: 'business' | 'customer',
+    phone?: string // Add optional phone parameter
+  ) => {
+    try {
+      const user = await registerUser(email, password, name, role, phone);
+      return user;
+    } catch (error) {
+      throw error;
+    }
+  };
+
+  // Logout
+  const logout = async () => {
+    try {
+      await logoutUser();
+    } catch (error) {
+      throw error;
+    }
+};
+
+  // Reset password
+  const resetPassword = async (email: string) => {
+    try {
+      await resetUserPassword(email);
+    } catch (error) {
+      throw error;
+    }
+  };
+
+  // Social sign-in methods
+  const googleSignIn = async () => {
+    try {
+      const user = await socialSignIn('google');
+      return user;
+    } catch (error) {
+      throw error;
+    }
+  };
+
+  const facebookSignIn = async () => {
+    try {
+      const user = await socialSignIn('facebook');
+      return user;
+    } catch (error) {
+      throw error;
+    }
+  };
+
+  const microsoftSignIn = async () => {
+    try {
+      const user = await socialSignIn('microsoft');
+      return user;
+    } catch (error) {
+      throw error;
+    }
+  };
+
+  const linkedInSignIn = async () => {
+    try {
+      const user = await socialSignIn('linkedin');
+      return user;
+    } catch (error) {
+      throw error;
+    }
+  };
+
+  // Switch business
+  const switchBusinessContext = async (businessId: string) => {
+    try {
+      if (!user) {
+        throw new Error('User not authenticated');
+      }
+
+      await switchBusiness(user.uid, businessId);
+
+      // Refresh user data
+      if (auth.currentUser) {
+        const updatedUser = await handleUserData(auth.currentUser);
+        if (updatedUser) {
+          setUser(updatedUser);
+
+          // Update business profile
+          if (updatedUser.businessProfile) {
+            setBusinessProfile(updatedUser.businessProfile);
+          }
+        }
+      }
+    } catch (error) {
+      throw error;
+    }
+  };
+
+  // Fetch user businesses
+  const fetchUserBusinessesContext = async () => {
+    try {
+      if (!user) {
+        throw new Error('User not authenticated');
+      }
+
+      const businesses = await fetchUserBusinesses(user.uid);
+      setUserBusinesses(businesses);
+    } catch (error) {
+      throw error;
+    }
+  };
+
+  // Check for invitations
+  const checkForInvitationsContext = async () => {
+    try {
+      if (!user || !user.email) {
+        return false;
+      }
+
+      return await checkForInvitations(user.email);
+    } catch (error) {
+      console.error('Error checking for invitations:', error);
+      return false;
+    }
+  };
+
+  // Context value
+  const contextValue: AuthContextType = {
     user,
     isLoading,
     businessProfile,
@@ -90,17 +223,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     facebookSignIn,
     microsoftSignIn,
     linkedInSignIn,
-    switchBusiness,
-    fetchUserBusinesses,
-    checkForInvitations,
+    switchBusiness: switchBusinessContext,
+    fetchUserBusinesses: fetchUserBusinessesContext,
+    checkForInvitations: checkForInvitationsContext,
     handleUserData
   };
 
   return (
-    <AuthContext.Provider value={value}>
+    <AuthContext.Provider value={contextValue}>
       {children}
     </AuthContext.Provider>
   );
 };
-
-export default AuthContext;

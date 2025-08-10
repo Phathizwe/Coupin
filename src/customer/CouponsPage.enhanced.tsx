@@ -183,6 +183,14 @@ const CouponsPage: React.FC = () => {
   };
 
   const colors = getBusinessColors();
+  
+  // Safely get business name
+  const getBusinessName = () => {
+    if (businessFilter) {
+      return businessFilter.businessName || businessFilter.name || 'Business';
+    }
+    return 'Business';
+  };
 
   if (loading) {
     return <LoadingSpinner />;
@@ -202,11 +210,13 @@ const CouponsPage: React.FC = () => {
     );
   }
 
+  const businessName = getBusinessName();
+
   return (
     <div className="container mx-auto px-4 py-6">
       <div className="flex justify-between items-center mb-6">
         <h1 className="text-2xl font-bold" style={{ color: businessFilter ? colors.primary : 'inherit' }}>
-          {businessFilter ? `Coupons from ${businessFilter.businessName}` : 'My Coupons'}
+          {businessFilter ? `Coupons from ${businessName}` : 'My Coupons'}
         </h1>
         <div className="flex space-x-2">
           {businessFilter && (
@@ -239,7 +249,7 @@ const CouponsPage: React.FC = () => {
             {businessFilter.logo ? (
               <img 
                 src={businessFilter.logo} 
-                alt={businessFilter.businessName} 
+                alt={businessName} 
                 className="w-10 h-10 rounded-full mr-3 border-2"
                 style={{ borderColor: colors.primary }}
               />
@@ -248,7 +258,7 @@ const CouponsPage: React.FC = () => {
                 className="w-10 h-10 rounded-full text-white flex items-center justify-center mr-3"
                 style={{ backgroundColor: colors.primary }}
               >
-                {businessFilter.businessName.charAt(0)}
+                {businessName.charAt(0)}
               </div>
             )}
             <div>
@@ -256,9 +266,9 @@ const CouponsPage: React.FC = () => {
                 className="font-medium"
                 style={{ color: colors.primary }}
               >
-                {businessFilter.businessName}
+                {businessName}
               </h2>
-              <p className="text-sm text-gray-500">{businessFilter.industry}</p>
+              <p className="text-sm text-gray-500">{businessFilter.industry || 'General'}</p>
             </div>
           </div>
         </div>

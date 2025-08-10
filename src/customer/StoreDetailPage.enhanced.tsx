@@ -88,6 +88,8 @@ const StoreDetailPage: React.FC = () => {
 
   const primaryColor = getPrimaryColor();
   const secondaryColor = getSecondaryColor();
+  const businessName = store.businessName || store.name || 'Business';
+  const couponCount = store.couponCount || 0;
 
   return (
     <div className="bg-white rounded-lg shadow overflow-hidden">
@@ -110,7 +112,7 @@ const StoreDetailPage: React.FC = () => {
           {store.logo ? (
             <img
               src={store.logo}
-              alt={store.businessName}
+              alt={businessName}
               className="h-16 w-16 rounded-full object-cover mr-4 border-2"
               style={{ borderColor: primaryColor }}
             />
@@ -119,7 +121,7 @@ const StoreDetailPage: React.FC = () => {
               className="h-16 w-16 rounded-full flex items-center justify-center text-white mr-4"
               style={{ backgroundColor: primaryColor }}
             >
-              <span className="text-2xl">{store.businessName.charAt(0)}</span>
+              <span className="text-2xl">{businessName.charAt(0)}</span>
             </div>
           )}
           
@@ -128,9 +130,9 @@ const StoreDetailPage: React.FC = () => {
               className="text-2xl font-bold"
               style={{ color: primaryColor }}
             >
-              {store.businessName}
+              {businessName}
             </h1>
-            <p className="text-sm text-gray-500">{store.industry}</p>
+            <p className="text-sm text-gray-500">{store.industry || 'General'}</p>
           </div>
         </div>
       </div>
@@ -174,14 +176,14 @@ const StoreDetailPage: React.FC = () => {
           >
             <div>
               <p className="text-gray-600">
-                {store.couponCount > 0 ? (
-                  <>This store has <span className="font-medium" style={{ color: secondaryColor }}>{store.couponCount}</span> active {store.couponCount === 1 ? 'coupon' : 'coupons'}.</>
+                {couponCount > 0 ? (
+                  <>This store has <span className="font-medium" style={{ color: secondaryColor }}>{couponCount}</span> active {couponCount === 1 ? 'coupon' : 'coupons'}.</>
                 ) : (
                   'This store has no active coupons at the moment.'
                 )}
               </p>
             </div>
-            {store.couponCount > 0 && (
+            {couponCount > 0 && (
               <button
                 onClick={handleViewCoupons}
                 className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white hover:opacity-90 focus:outline-none focus:ring-2 focus:ring-offset-2"

@@ -3,39 +3,216 @@ import {
   signInWithEmailAndPassword,
   signOut,
   sendPasswordResetEmail,
-  updateProfile,
+  signInWithPopup,
   GoogleAuthProvider,
   FacebookAuthProvider,
   OAuthProvider,
-  signInWithPopup,
   User as FirebaseUser,
-  UserCredential,
   getRedirectResult
 } from 'firebase/auth';
-import { 
-  doc, 
-  getDoc, 
-  setDoc, 
-  updateDoc, 
-  collection, 
-  query, 
-  where, 
+import {
+  doc,
+  getDoc,
+  setDoc,
+  updateDoc,
+  collection,
+  query,
+  where,
   getDocs,
-  serverTimestamp 
+  serverTimestamp
 } from 'firebase/firestore';
 import { auth, db } from '../../config/firebase';
 import { ExtendedUser } from './types';
 import { BusinessProfile } from '../../types';
+import { findCustomerByPhone } from '../../services/customerLookupService';
 
-// Check for redirect result
-export const checkRedirectResult = async (): Promise<UserCredential | null> => {
+// Add this function to debug the issue
+const debugUserData = async (userId: string) => {
   try {
-    console.log('[DEBUG] Checking for redirect result');
-    const result = await getRedirectResult(auth);
-    console.log('[DEBUG] Redirect result:', result);
-    return result;
+    console.log('Debugging user data for:', userId);
+    const userDoc = await getDoc(doc(db, 'users', userId));
+    console.log('User document exists:', userDoc.exists());
+    if (userDoc.exists()) {
+      console.log('User data:', userDoc.data());
+
+      // Check if businessId exists
+      const businessId = userDoc.data().businessId || userDoc.data().currentBusinessId;
+      console.log('Business ID from user document:', businessId);
+
+      if (businessId) {
+        // Check if business document exists
+        const businessDoc = await getDoc(doc(db, 'businesses', businessId));
+        console.log('Business document exists:', businessDoc.exists());
+        if (businessDoc.exists()) {
+          console.log('Business data:', businessDoc.data());
+        }
+      }
+    }
   } catch (error) {
-    console.error('[DEBUG] Error checking redirect result:', error);
+    console.error('Error debugging user data:', error);
+  }
+};
+
+// Handle user data - extract user data from Firebase user
+export const handleUserData = async (firebaseUser: FirebaseUser): Promise<ExtendedUser | null> => {
+  if (!firebaseUser) {
+    console.error('[handleUserData] No Firebase user provided');
+    return null;
+  }
+
+  try {
+    console.log('[handleUserData] Processing user data for:', firebaseUser.uid);
+    
+    const userDocRef = doc(db, 'users', firebaseUser.uid);
+    const userDoc = await getDoc(userDocRef);
+    
+    // Debug the user data
+    await debugUserData(firebaseUser.uid);
+
+    // Create a base extended user object with proper type handling
+    const extendedUser: ExtendedUser = {
+      ...firebaseUser,
+      role: 'customer', // Default role
+      businesses: [],
+      businessId: undefined,
+      currentBusinessId: undefined,
+      businessProfile: undefined
+    };
+
+    if (userDoc.exists()) {
+      const docData = userDoc.data();
+
+      // Add Firestore data to the extended user
+      extendedUser.role = docData.role || 'customer';
+      extendedUser.businessId = docData.businessId || undefined;
+      extendedUser.businesses = docData.businesses || [];
+      extendedUser.currentBusinessId = docData.currentBusinessId || docData.businessId || undefined;
+
+      // Ensure businessId is set correctly for business users
+      if (extendedUser.role === 'business') {
+        // If no businessId but we have businesses array
+        if (!extendedUser.businessId && extendedUser.businesses && extendedUser.businesses.length > 0) {
+          extendedUser.businessId = extendedUser.businesses[0];
+          extendedUser.currentBusinessId = extendedUser.businesses[0];
+
+          // Update the user document with the businessId
+          await updateDoc(userDocRef, {
+            businessId: extendedUser.businessId,
+            currentBusinessId: extendedUser.currentBusinessId
+          });
+        }
+        // If no businesses array but we have a businessId
+        else if (extendedUser.businessId && (!extendedUser.businesses || extendedUser.businesses.length === 0)) {
+          extendedUser.businesses = [extendedUser.businessId];
+
+          // Update the user document with the businesses array
+          await updateDoc(userDocRef, {
+            businesses: extendedUser.businesses
+          });
+        }
+        // If no businessId and no businesses array, create a new business
+        else if ((!extendedUser.businessId || extendedUser.businessId === '') &&
+          (!extendedUser.businesses || extendedUser.businesses.length === 0)) {
+          // Create a new business
+          const businessRef = doc(collection(db, 'businesses'));
+          const businessId = businessRef.id;
+
+          await setDoc(businessRef, {
+            businessId: businessId,
+            businessName: firebaseUser.displayName || 'My Business',
+            industry: '',
+            createdAt: new Date(),
+            ownerId: firebaseUser.uid,
+            active: true,
+            businessNameLower: (firebaseUser.displayName || 'My Business').toLowerCase()
+          });
+
+          // Update user with business reference
+          extendedUser.businessId = businessId;
+          extendedUser.businesses = [businessId];
+          extendedUser.currentBusinessId = businessId;
+
+          await updateDoc(userDocRef, {
+            businessId: businessId,
+            businesses: [businessId],
+            currentBusinessId: businessId
+          });
+        }
+      }
+    } else {
+      // User document doesn't exist, create one
+      const userData: any = {
+        uid: firebaseUser.uid,
+        email: firebaseUser.email,
+        displayName: firebaseUser.displayName,
+        photoURL: firebaseUser.photoURL,
+        role: 'customer', // Default for new users
+        createdAt: new Date()
+      };
+
+      // Save user data to Firestore
+      await setDoc(userDocRef, userData);
+
+      // Update extended user with the role
+      extendedUser.role = 'customer';
+    }
+
+    // If we have a businessId, fetch the business profile
+    if (extendedUser.businessId) {
+      const businessDocRef = doc(db, 'businesses', extendedUser.businessId);
+      const businessDoc = await getDoc(businessDocRef);
+
+      if (businessDoc.exists()) {
+        const businessData = businessDoc.data();
+        extendedUser.businessProfile = {
+          businessId: extendedUser.businessId,
+          businessName: businessData.businessName || '',
+          industry: businessData.industry || '',
+          address: businessData.address || '',
+          phone: businessData.phone || '',
+          website: businessData.website || '',
+          logo: businessData.logo || '',
+          colors: businessData.colors || { primary: '#3B82F6', secondary: '#10B981' },
+          subscriptionTier: businessData.subscriptionTier || 'free',
+          subscriptionStatus: businessData.subscriptionStatus || 'active'
+        };
+      } else if (extendedUser.role === 'business') {
+        // Business document doesn't exist but should, create it
+        await setDoc(businessDocRef, {
+          businessId: extendedUser.businessId,
+          businessName: firebaseUser.displayName || 'My Business',
+          industry: '',
+          createdAt: new Date(),
+          ownerId: firebaseUser.uid,
+          active: true,
+          businessNameLower: (firebaseUser.displayName || 'My Business').toLowerCase()
+        });
+
+        // Set business profile
+        extendedUser.businessProfile = {
+          businessId: extendedUser.businessId,
+          businessName: firebaseUser.displayName || 'My Business',
+          industry: '',
+          address: '',
+          phone: '',
+          website: '',
+          logo: '',
+          colors: { primary: '#3B82F6', secondary: '#10B981' },
+          subscriptionTier: 'free',
+          subscriptionStatus: 'active'
+        };
+      }
+    }
+
+    // Final validation before returning
+    if (!extendedUser.uid) {
+      console.error('[handleUserData] CRITICAL: Extended user missing UID!');
+      return null;
+    }
+
+    return extendedUser;
+  } catch (error) {
+    console.error('[handleUserData] Error processing user data:', error);
     return null;
   }
 };
@@ -43,97 +220,118 @@ export const checkRedirectResult = async (): Promise<UserCredential | null> => {
 // Login with email and password
 export const loginWithEmail = async (email: string, password: string): Promise<ExtendedUser> => {
   try {
-    console.log('Logging in user:', email);
     const userCredential = await signInWithEmailAndPassword(auth, email, password);
+    const extendedUser = await handleUserData(userCredential.user);
     
-    // Make sure we're returning the full user object with all properties
-    console.log('Login successful, user object:', userCredential.user);
-    return userCredential.user as ExtendedUser;
-  } catch (error) {
+    if (!extendedUser) {
+      throw new Error('Failed to load user data');
+    }
+
+    return extendedUser;
+  } catch (error: any) {
     console.error('Login error:', error);
     throw error;
   }
 };
 
-// Register new user
+// Register with email and password - renamed to match the import in AuthContext
 export const registerUser = async (
-  email: string, 
-  password: string, 
-  name: string, 
-  role: 'business' | 'customer'
+  email: string,
+  password: string,
+  name: string,
+  role: 'business' | 'customer',
+  phone?: string // Add phone parameter
 ): Promise<ExtendedUser> => {
   try {
-    console.log('Starting registration with role:', role);
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-    
-    // Update profile with display name
-    await updateProfile(userCredential.user, {
-      displayName: name
-    });
+    const user = userCredential.user;
 
-    const userData = {
-      uid: userCredential.user.uid,
-      email: userCredential.user.email,
+    console.log('[authServices] User created in Firebase Auth:', user.uid);
+
+    // Create user document
+    const userData: any = {
+      uid: user.uid,
+      email: user.email,
       displayName: name,
       role: role,
-      businesses: role === 'business' ? [userCredential.user.uid] : [],
-      currentBusinessId: role === 'business' ? userCredential.user.uid : undefined,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp()
+      createdAt: new Date(),
     };
 
-    console.log('Creating user document:', userData);
-    
-    // Create user document in Firestore
-    await setDoc(doc(db, 'users', userCredential.user.uid), userData);
+    // Add phone number to user data if provided
+    if (phone) {
+      userData.phoneNumber = phone;
+    }
 
-    // If business user, create business document
+    // If role is business, create a business document
     if (role === 'business') {
+      console.log('[authServices] Creating business document for business user');
+
+      // Create a business document
+      const businessRef = doc(collection(db, 'businesses'));
+      const businessId = businessRef.id;
+
       const businessData = {
-        businessId: userCredential.user.uid,
-        businessName: name || email.split('@')[0],
-        industry: 'Not specified',
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-        subscriptionTier: 'free',
-        subscriptionStatus: 'active',
-        createdBy: userCredential.user.uid
+        businessId: businessId,
+        businessName: name,
+        industry: '',
+        createdAt: new Date(),
+        ownerId: user.uid,
+        active: true,
+        businessNameLower: name.toLowerCase() // Add lowercase name for searching
       };
 
-      console.log('Creating business document:', businessData);
-      await setDoc(doc(db, 'businesses', userCredential.user.uid), businessData);
+      await setDoc(businessRef, businessData);
+      console.log('[authServices] Created business document:', businessId);
+
+      // Update user with business reference
+      userData.businessId = businessId;
+      userData.businesses = [businessId];
+      userData.currentBusinessId = businessId;
+    } 
+    // If role is customer and phone is provided, check for existing customer
+    else if (role === 'customer' && phone) {
+      console.log('[authServices] Checking for existing customer with phone:', phone);
       
-      // Add business owner as first user
-      await setDoc(doc(db, 'businesses', userCredential.user.uid, 'users', userCredential.user.uid), {
-        email: userCredential.user.email,
-        name: name,
-        role: 'owner',
-        status: 'active',
-        permissions: {
-          manageUsers: true,
-          manageSettings: true,
-          manageCoupons: true,
-          manageCustomers: true,
-          viewAnalytics: true
-        },
-        joinedAt: serverTimestamp()
-      });
+      // Check if a customer with this phone already exists
+      const existingCustomer = await findCustomerByPhone(phone);
+      
+      if (existingCustomer) {
+        console.log('[authServices] Found existing customer with phone:', existingCustomer.id);
+        
+        // Link user to existing customer
+        if (!existingCustomer.userId) {
+          // Update customer with user ID
+          await updateDoc(doc(db, 'customers', existingCustomer.id), {
+            userId: user.uid,
+            updatedAt: serverTimestamp()
+          });
+          console.log('[authServices] Linked user to existing customer');
+        }
+      }
     }
-    
-    return userCredential.user as ExtendedUser;
-  } catch (error) {
+
+    // Save user data to Firestore
+    await setDoc(doc(db, 'users', user.uid), userData);
+    console.log('[authServices] Created user document in Firestore');
+      
+    // Return extended user
+    const extendedUser = await handleUserData(user);
+    if (!extendedUser) {
+      throw new Error('Failed to load user data after registration');
+    }
+    return extendedUser;
+  } catch (error: any) {
     console.error('Registration error:', error);
     throw error;
   }
 };
 
-// Logout
+// Sign out
 export const logoutUser = async (): Promise<void> => {
   try {
-    console.log('Logging out user');
     await signOut(auth);
   } catch (error) {
-    console.error('Logout error:', error);
+    console.error('Sign out error:', error);
     throw error;
   }
 };
@@ -143,108 +341,152 @@ export const resetUserPassword = async (email: string): Promise<void> => {
   try {
     await sendPasswordResetEmail(auth, email);
   } catch (error) {
-    console.error('Password reset error:', error);
+    console.error('Reset password error:', error);
     throw error;
   }
 };
 
-// Social sign-in methods with enhanced debug logging
-export const socialSignIn = async (provider: string): Promise<UserCredential> => {
+// Social sign in - unified function for all social providers
+export const socialSignIn = async (provider: 'google' | 'facebook' | 'microsoft' | 'linkedin'): Promise<ExtendedUser> => {
   try {
-    console.log(`[DEBUG] Starting ${provider} sign-in process`);
     let authProvider;
-    
-    switch(provider) {
+
+    switch (provider) {
       case 'google':
-        console.log('[DEBUG] Creating Google auth provider');
         authProvider = new GoogleAuthProvider();
-        
-        // Add these specific scopes to ensure we get the right permissions
-        authProvider.addScope('https://www.googleapis.com/auth/userinfo.email');
-        authProvider.addScope('https://www.googleapis.com/auth/userinfo.profile');
-        
-        // Set custom parameters to improve popup behavior
-        authProvider.setCustomParameters({
-          prompt: 'select_account',
-          login_hint: '',  // Leave empty to not pre-fill any email
-        });
         break;
       case 'facebook':
-        console.log('[DEBUG] Creating Facebook auth provider');
         authProvider = new FacebookAuthProvider();
         break;
       case 'microsoft':
-        console.log('[DEBUG] Creating Microsoft auth provider');
         authProvider = new OAuthProvider('microsoft.com');
         break;
       case 'linkedin':
-        console.log('[DEBUG] Creating LinkedIn auth provider');
-        authProvider = new OAuthProvider('linkedin.com');
-        break;
+        // LinkedIn requires a custom OAuth flow, this is a placeholder
+        throw new Error('LinkedIn sign in not implemented');
       default:
-        console.error(`[DEBUG] Unsupported provider: ${provider}`);
         throw new Error(`Unsupported provider: ${provider}`);
     }
-    
-    console.log(`[DEBUG] ${provider} auth provider created:`, authProvider);
-    
-    // Use a try-catch specifically for the popup operation
-    try {
-      // Make sure we're properly awaiting the popup result
-      console.log(`[DEBUG] Calling signInWithPopup for ${provider}`);
-      const result = await signInWithPopup(auth, authProvider);
-      console.log(`[DEBUG] ${provider} sign-in completed successfully`);
-      
-      // Verify we have a valid user object
-      if (!result || !result.user) {
-        throw new Error(`Invalid response from ${provider} authentication`);
-      }
-      
-      return result;
-    } catch (popupError: any) {
-      console.error(`[DEBUG] Error in signInWithPopup for ${provider}:`, popupError);
-      
-      // Log specific error codes for debugging
-      if (popupError.code === 'auth/popup-closed-by-user') {
-        console.log('[DEBUG] User closed the popup window');
-        throw new Error('Authentication canceled: you closed the login window');
-      } else if (popupError.code === 'auth/popup-blocked') {
-        console.log('[DEBUG] Popup was blocked by the browser');
-        throw new Error('Authentication popup was blocked by your browser. Please check your popup blocker settings.');
-      } else if (popupError.code === 'auth/cancelled-popup-request') {
-        console.log('[DEBUG] Previous popup request was cancelled');
-        throw new Error('Previous authentication request was canceled');
-      } else if (popupError.code === 'auth/operation-not-allowed') {
-        console.log('[DEBUG] The sign-in provider is disabled for this Firebase project');
-        throw new Error(`${provider} authentication is not enabled for this application`);
-      }
-      
-      throw popupError;
+
+    const userCredential = await signInWithPopup(auth, authProvider);
+
+    // Check if user exists in Firestore
+    const userDoc = await getDoc(doc(db, 'users', userCredential.user.uid));
+
+    if (!userDoc.exists()) {
+      // First time social sign in, create user document
+      await setDoc(doc(db, 'users', userCredential.user.uid), {
+        uid: userCredential.user.uid,
+        email: userCredential.user.email,
+        displayName: userCredential.user.displayName,
+        photoURL: userCredential.user.photoURL,
+        role: 'customer', // Default role
+        createdAt: new Date()
+      });
     }
-  } catch (error: any) {
-    console.error(`[DEBUG] ${provider} sign-in error:`, error);
-    console.error(`[DEBUG] Error code:`, error.code);
-    console.error(`[DEBUG] Error message:`, error.message);
+
+    const extendedUser = await handleUserData(userCredential.user);
+    if (!extendedUser) {
+      throw new Error(`Failed to load user data after ${provider} sign-in`);
+    }
+    return extendedUser;
+  } catch (error) {
+    console.error(`${provider} sign in error:`, error);
     throw error;
   }
 };
 
-// Check for pending invitations
-export const checkForInvitations = async (email: string | null | undefined): Promise<boolean> => {
-  if (!email) return false;
-  
+// Switch business
+export const switchBusiness = async (userId: string, businessId: string): Promise<void> => {
   try {
-    const invitationsRef = collection(db, 'invitations');
-    const q = query(
-      invitationsRef, 
+    const userRef = doc(db, 'users', userId);
+
+    // Update current business ID
+    await updateDoc(userRef, {
+      currentBusinessId: businessId
+    });
+  } catch (error) {
+    console.error('Switch business error:', error);
+    throw error;
+  }
+};
+
+// Fetch user businesses
+export const fetchUserBusinesses = async (userId: string): Promise<BusinessProfile[]> => {
+  try {
+    const userDoc = await getDoc(doc(db, 'users', userId));
+
+    if (!userDoc.exists()) {
+      return [];
+    }
+
+    const userData = userDoc.data();
+    const businesses = userData.businesses || [];
+
+    if (businesses.length === 0) {
+      return [];
+    }
+
+    const businessProfiles: BusinessProfile[] = [];
+
+    for (const businessId of businesses) {
+      const businessDoc = await getDoc(doc(db, 'businesses', businessId));
+
+      if (businessDoc.exists()) {
+        const businessData = businessDoc.data();
+
+        businessProfiles.push({
+          businessId: businessId,
+          businessName: businessData.businessName || '',
+          industry: businessData.industry || '',
+          address: businessData.address || '',
+          phone: businessData.phone || '',
+          website: businessData.website || '',
+          logo: businessData.logo || '',
+          colors: businessData.colors || { primary: '#3B82F6', secondary: '#10B981' },
+          subscriptionTier: businessData.subscriptionTier || 'free',
+          subscriptionStatus: businessData.subscriptionStatus || 'active'
+        });
+      }
+    }
+
+    return businessProfiles;
+  } catch (error) {
+    console.error('Fetch user businesses error:', error);
+    return [];
+  }
+};
+
+// Check for user invitations
+export const checkForInvitations = async (email: string): Promise<boolean> => {
+  try {
+    const invitationsQuery = query(
+      collection(db, 'invitations'),
       where('email', '==', email),
       where('status', '==', 'pending')
     );
-    
-    const snapshot = await getDocs(q);
-    return !snapshot.empty;
+
+    const invitationsSnapshot = await getDocs(invitationsQuery);
+
+    return !invitationsSnapshot.empty;
   } catch (error) {
-    console.error('Error checking for invitations:', error);
+    console.error('Check invitations error:', error);
     return false;
+  }
+};
+
+// Check redirect result for auth redirects
+export const checkRedirectResult = async (): Promise<FirebaseUser | null> => {
+  try {
+    const result = await getRedirectResult(auth);
+
+    if (result) {
+      return result.user;
+    }
+
+    return null;
+  } catch (error) {
+    console.error('Check redirect result error:', error);
+    return null;
   }
 };

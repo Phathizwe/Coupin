@@ -1,11 +1,63 @@
-import { collection, query, where, getDocs, DocumentData, QueryDocumentSnapshot, getDoc, doc, and, or } from 'firebase/firestore';
+import { collection, query, where, getDocs, DocumentData, QueryDocumentSnapshot, getDoc, doc, limit, orderBy, startAfter } from 'firebase/firestore';
 import { db } from '../../config/firebase';
 import { Business } from '../types/store';
-import { findCustomerByUserId, findCustomerByPhone } from '../../services/customerLinkingService';
+import { findCustomerByUserId } from '../../services/customerLinkingService';
 import { getBusinessIdsFromCollections } from './storeServiceHelpers';
 import { fetchBusinessDetails } from './businessService';
 
 const STORES_PER_PAGE = 12;
+
+/**
+ * Search for businesses by name
+ * @param searchTerm The search term to look for in business names
+ * @returns Array of matching businesses
+ */
+export const searchBusinesses = async (searchTerm: string): Promise<Business[]> => {
+  try {
+    if (!searchTerm || searchTerm.trim().length < 2) {
+      return [];
+    }
+
+    const normalizedSearchTerm = searchTerm.trim().toLowerCase();
+    
+    // Query businesses collection for matching names
+    const businessesRef = collection(db, 'businesses');
+    
+    // Firebase doesn't support case-insensitive search directly,
+    // so we use a range query with a lowercase field
+    const q = query(
+      businessesRef,
+      where('businessNameLower', '>=', normalizedSearchTerm),
+      where('businessNameLower', '<=', normalizedSearchTerm + '\uf8ff'),
+      limit(20)
+    );
+    
+    const snapshot = await getDocs(q);
+    
+    // Transform results into Business objects
+    const businesses: Business[] = [];
+    
+    snapshot.forEach(doc => {
+      const data = doc.data();
+      businesses.push({
+        id: doc.id,
+        name: data.businessName || '',
+        description: data.description || '',
+        logo: data.logo || '',
+        address: data.address || '',
+        phone: data.phone || '',
+        website: data.website || '',
+        industry: data.industry || '',
+        saved: false // Will be updated later
+      });
+    });
+    
+    return businesses;
+  } catch (error) {
+    console.error('Error searching businesses:', error);
+    throw error;
+  }
+};
 
 /**
  * Fetches initial set of stores for a user
@@ -54,126 +106,67 @@ export const fetchInitialStores = async (userId: string): Promise<{
 };
 
 /**
- * Fetches more stores for pagination
- * @param userId The user ID to fetch stores for
- * @param lastVisible The last visible document from the previous fetch
- * @returns Object containing stores, last visible document, and whether there are more stores
+ * Fetches popular or featured businesses
+ * @returns Array of popular businesses
  */
-export const fetchMoreStores = async (
-  userId: string,
-  lastVisible: QueryDocumentSnapshot<DocumentData>
-): Promise<{
-  stores: Business[];
-  lastVisible: QueryDocumentSnapshot<DocumentData> | null;
-  hasMore: boolean;
-}> => {
-  // For now, we're loading all stores at once, so this is a placeholder
-  return {
-    stores: [],
-    lastVisible: null,
-    hasMore: false
-  };
+export const fetchPopularBusinesses = async (): Promise<Business[]> => {
+  try {
+    const businessesRef = collection(db, 'businesses');
+    const q = query(
+      businessesRef,
+      where('featured', '==', true),
+      limit(10)
+    );
+    
+    const snapshot = await getDocs(q);
+    
+    // Transform results into Business objects
+    const businesses: Business[] = [];
+    
+    snapshot.forEach(doc => {
+      const data = doc.data();
+      businesses.push({
+        id: doc.id,
+        name: data.businessName || '',
+        description: data.description || '',
+        logo: data.logo || '',
+        address: data.address || '',
+        phone: data.phone || '',
+        website: data.website || '',
+        industry: data.industry || '',
+        saved: false // Will be updated later
+      });
+    });
+    
+    return businesses;
+  } catch (error) {
+    console.error('Error fetching popular businesses:', error);
+    return [];
+  }
 };
 
 /**
- * Checks if a store is saved by a user
- * @param userId The user ID to check
- * @param businessId The business ID to check
- * @returns Boolean indicating whether the store is saved
+ * Gets all loyalty programs for a business
+ * @param businessId The business ID
+ * @returns Array of loyalty programs
  */
-export const isStoreSaved = async (userId: string, businessId: string): Promise<boolean> => {
+export const getBusinessPrograms = async (businessId: string) => {
   try {
-    // First, check if the user is linked to a customer profile
-    const linkedCustomer = await findCustomerByUserId(userId);
-    const customerId = linkedCustomer?.id;
-    const customerPhone = linkedCustomer?.phone;
+    const programsRef = collection(db, 'loyaltyPrograms');
+    const q = query(
+      programsRef,
+      where('businessId', '==', businessId),
+      where('active', '==', true)
+    );
     
-    // If we have both IDs, we'll search using both
-    const idsToSearch = [userId];
-    if (customerId) {
-      idsToSearch.push(customerId);
-    }
+    const snapshot = await getDocs(q);
     
-    // Check in couponDistributions
-    for (const id of idsToSearch) {
-      const distributionsRef = collection(db, 'couponDistributions');
-      const distributionsQuery = query(
-        distributionsRef,
-        and(
-          where('customerId', '==', id),
-          where('businessId', '==', businessId)
-        )
-      );
-      const distributionsSnapshot = await getDocs(distributionsQuery);
-      
-      if (!distributionsSnapshot.empty) {
-        return true;
-      }
-    }
-    
-    // Check in customerCoupons for customerId
-    for (const id of idsToSearch) {
-      const customerCouponsRef = collection(db, 'customerCoupons');
-      const customerCouponsQuery = query(
-        customerCouponsRef,
-        where('customerId', '==', id),
-        where('businessId', '==', businessId)
-      );
-      const customerCouponsSnapshot = await getDocs(customerCouponsQuery);
-      
-      if (!customerCouponsSnapshot.empty) {
-        return true;
-      }
-    }
-    
-    // Check in customerCoupons for userId
-    for (const id of idsToSearch) {
-      const customerCouponsRef = collection(db, 'customerCoupons');
-      const customerCouponsQuery = query(
-        customerCouponsRef,
-        where('userId', '==', id),
-        where('businessId', '==', businessId)
-      );
-      const customerCouponsSnapshot = await getDocs(customerCouponsQuery);
-      
-      if (!customerCouponsSnapshot.empty) {
-        return true;
-      }
-    }
-    
-    // Check for phone-based coupon distributions if we have a phone number
-    if (customerPhone) {
-      // Find all customers with this phone number (there might be duplicates)
-      const customersRef = collection(db, 'customers');
-      const phoneQuery = query(
-        customersRef,
-        where('phone', '==', customerPhone)
-      );
-      const phoneCustomersSnapshot = await getDocs(phoneQuery);
-      
-      // Check coupon distributions for each customer with this phone
-      for (const customerDoc of phoneCustomersSnapshot.docs) {
-        const phoneCustomerId = customerDoc.id;
-        
-        const distributionsRef = collection(db, 'couponDistributions');
-        const distributionsQuery = query(
-          distributionsRef,
-          and(
-            where('customerId', '==', phoneCustomerId),
-            where('businessId', '==', businessId)
-          )
-        );
-        const distributionsSnapshot = await getDocs(distributionsQuery);
-        
-        if (!distributionsSnapshot.empty) {
-          return true;
-        }
-      }
-    }
-    
-    return false;
+    return snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
   } catch (error) {
-    console.error('Error checking if store is saved:', error);
-    return false;
+    console.error('Error getting business programs:', error);
+    throw error;
   }
 };

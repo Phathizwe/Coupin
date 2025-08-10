@@ -2,12 +2,13 @@ import { User as FirebaseUser } from 'firebase/auth';
 import { BusinessProfile } from '../../types';
 
 // Extended User type that includes our custom properties
-export interface ExtendedUser extends FirebaseUser {
+export interface ExtendedUser extends Omit<FirebaseUser, 'phoneNumber'> {
   businessId?: string;
   businesses?: string[];  // Array of business IDs the user belongs to
   role?: 'business' | 'customer' | 'staff' | 'admin';
   currentBusinessId?: string; // Currently selected business
   businessProfile?: BusinessProfile; // Include business profile data
+  phoneNumber?: string | null; // Redefine phoneNumber to match FirebaseUser but allow undefined
 }
 
 export interface AuthContextType {
@@ -16,7 +17,7 @@ export interface AuthContextType {
   businessProfile: BusinessProfile | null;
   userBusinesses: BusinessProfile[];
   login: (email: string, password: string) => Promise<ExtendedUser>;
-  register: (email: string, password: string, name: string, role: 'business' | 'customer') => Promise<ExtendedUser>;
+  register: (email: string, password: string, name: string, role: 'business' | 'customer', phone?: string) => Promise<ExtendedUser>;
   logout: () => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
   googleSignIn: () => Promise<ExtendedUser>;
@@ -26,7 +27,7 @@ export interface AuthContextType {
   switchBusiness: (businessId: string) => Promise<void>;
   fetchUserBusinesses: () => Promise<void>;
   checkForInvitations: () => Promise<boolean>;
-  handleUserData: (firebaseUser: any) => Promise<ExtendedUser | null>;
+  handleUserData: (firebaseUser: FirebaseUser) => Promise<ExtendedUser | null>;
 }
 
 // Default context value with empty implementations
@@ -36,7 +37,7 @@ export const defaultContextValue: AuthContextType = {
   businessProfile: null,
   userBusinesses: [],
   login: async (email, password) => { return {} as ExtendedUser; },
-  register: async (email, password, name, role) => { return {} as ExtendedUser; },
+  register: async (email, password, name, role, phone) => { return {} as ExtendedUser; },
   logout: async () => { },
   resetPassword: async () => { },
   googleSignIn: async () => { return {} as ExtendedUser; },

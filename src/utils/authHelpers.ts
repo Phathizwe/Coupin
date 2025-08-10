@@ -21,6 +21,7 @@ interface UserData {
   email?: string | null;
   displayName?: string | null;
   photoURL?: string | null;
+  phoneNumber?: string | null;
   createdAt?: any;
   updatedAt?: any;
   [key: string]: any; // Allow for additional properties
@@ -120,7 +121,7 @@ export const handleAuthSuccess = async (
 export const handleRegistration = async (
   values: RegisterFormValues,
   accountType: 'customer' | 'business',
-  register: (email: string, password: string, name: string, role: 'customer' | 'business') => Promise<any>,
+  register: (email: string, password: string, name: string, role: 'customer' | 'business', phone?: string) => Promise<any>,
   navigate: NavigateFunction,
   setIsLoading: (loading: boolean) => void,
   setLinkingSuccess: (success: boolean) => void
@@ -128,10 +129,17 @@ export const handleRegistration = async (
   setIsLoading(true);
   try {
     console.log(`[AuthHelpers] Registering new ${accountType} account for ${values.email}`);
+    console.log(`[AuthHelpers] Phone number provided:`, values.phone);
 
     // Register the user with Firebase Authentication
-    const userCredential = await register(values.email, values.password, values.name, accountType);
-
+    // Pass the phone number to the register function
+    const userCredential = await register(
+      values.email, 
+      values.password, 
+      values.name, 
+      accountType,
+      values.phone // Pass the phone number
+    );
     if (!userCredential || !userCredential.uid) {
       console.error('[AuthHelpers] Invalid user credential returned from register function');
       throw new Error('Registration failed: Invalid user credential');
@@ -155,7 +163,8 @@ export const handleRegistration = async (
           createdAt: new Date(),
           updatedAt: new Date(),
           ownerId: userCredential.uid,
-          active: true
+          active: true,
+          businessNameLower: (values.name || 'My Business').toLowerCase()
         };
 
         await setDoc(businessRef, businessData);
@@ -176,7 +185,33 @@ export const handleRegistration = async (
         // Don't fail the registration if business setup fails
       }
     }
-
+    // If customer with phone number, try to link to existing customer profile
+    else if (accountType === 'customer' && values.phone) {
+  try {
+        console.log('[AuthHelpers] Checking for existing customer with phone:', values.phone);
+        
+        // Find customer by phone
+        const existingCustomer = await findCustomerByPhone(values.phone);
+        
+        if (existingCustomer) {
+          console.log('[AuthHelpers] Found existing customer:', existingCustomer.id);
+          
+          // Link user to customer
+          const linked = await linkUserToCustomer(userCredential.uid, existingCustomer.id);
+          
+          if (linked) {
+            console.log('[AuthHelpers] Successfully linked user to existing customer');
+            setLinkingSuccess(true);
+          }
+        } else {
+          console.log('[AuthHelpers] No existing customer found with phone:', values.phone);
+        }
+    } catch (error) {
+        console.error('[AuthHelpers] Error linking customer:', error);
+        // Don't fail registration if linking fails
+    }
+    }
+    
     // Rest of your existing code...
     toast.success('Account created successfully!');
 

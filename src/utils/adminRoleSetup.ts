@@ -1,6 +1,7 @@
 import { doc, getDoc, setDoc, updateDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { db } from '@/config/firebase';
 import { User } from 'firebase/auth';
+import { ExtendedUser } from '@/contexts/auth/types';
 
 /**
  * Sets the user as admin by email
@@ -36,7 +37,7 @@ export const setUserAsAdmin = async (email: string): Promise<boolean> => {
  * Checks if the current user is an admin and sets up the admin role
  * for phathizwe@gmail.com if they sign in
  */
-export const setupAdminUser = async (user: User | null): Promise<void> => {
+export const setupAdminUser = async (user: User | ExtendedUser | null): Promise<void> => {
   if (!user) return;
   
   // Check if the user is phathizwe@gmail.com
