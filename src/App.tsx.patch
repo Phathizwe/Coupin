@@ -1,0 +1,79 @@
+import { useEffect } from 'react';
+import { applyUserCurrencyPreference } from './utils/currencyRegionFix';
+
+// Then add this useEffect hook inside your main App component:
+useEffect(() => {
+  // Apply the fix on app initialization
+  applyUserCurrencyPreference();
+}, []);
+
+const setRegion = (newRegion: string) => {
+  console.log('[CurrencyContext] Setting region to:', newRegion);
+  setIsLoading(true);
+  localStorage.setItem('userRegion', newRegion);
+  setRegionState(newRegion);
+
+  // Add this line to dispatch region-changed event:
+  document.dispatchEvent(new CustomEvent('region-changed', {
+    detail: { region: newRegion }
+  }));
+
+  // Add this check for explicit user currency choice:
+  const userExplicitlySelectedCurrency = localStorage.getItem('userExplicitCurrencyChoice') === 'true';
+
+  if (!userExplicitlySelectedCurrency) {
+    // Only update currency if user hasn't explicitly chosen one
+    const regionToCurrency: Record<string, string> = {
+      'US': 'USD',
+      'GB': 'GBP',
+      'EU': 'EUR',
+      'ZA': 'ZAR',
+      // Keep the rest of your mappings...
+    };
+
+    const defaultCurrencyForRegion = regionToCurrency[newRegion];
+    if (defaultCurrencyForRegion) {
+      console.log('[CurrencyContext] Updating currency based on region to:', defaultCurrencyForRegion);
+      setCurrency(defaultCurrencyForRegion);
+    }
+  } else {
+    console.log('[CurrencyContext] Preserving user currency choice despite region change');
+  }
+
+  const handleCurrencyChange = (newCurrency: string) => {
+    console.log('[PricingPage] Setting currency to:', newCurrency);
+    // Add this line to mark explicit user choice:
+    localStorage.setItem('userExplicitCurrencyChoice', 'true');
+    
+    // Default to ZAR if the selected currency is not available
+    if (!availableCurrencies.includes(newCurrency)) {
+      console.log('[PricingPage] Selected currency not available, defaulting to ZAR');
+      setCurrency('ZAR');
+    } else {
+      setCurrency(newCurrency);
+    }
+  };
+
+  const setSelectedCurrency = (code: string) => {
+    setSelectedCurrencyState(code);
+    localStorage.setItem('userCurrency', code);
+    // Add this line to mark explicit user choice:
+    localStorage.setItem('userExplicitCurrencyChoice', 'true');
+    console.log('Currency set to:', code);
+
+  // Rest of the function remains the same...
+};
+
+const resetToDetected = async () => {
+  console.log('Resetting to detected region...');
+  localStorage.removeItem('userRegion');
+  localStorage.removeItem('userCurrency');
+  // Add this line to clear explicit choice flag:
+  localStorage.removeItem('userExplicitCurrencyChoice');
+
+  // Rest of the function remains the same...
+};
+
+  setTimeout(() => {
+    setIsLoading(false);
+  }, 300);

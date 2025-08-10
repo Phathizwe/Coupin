@@ -1,0 +1,364 @@
+/* Billing Responsive Design - Mobile-First Approach */
+
+/* Base Styles - Mobile First */
+.billing-layout {
+  padding: var(--billing-space-4);
+  max-width: 100%;
+}
+
+.billing-container {
+  width: 100%;
+  margin: 0 auto;
+  padding: 0 var(--billing-space-4);
+}
+
+/* Grid Systems */
+.billing-grid {
+  display: grid;
+  gap: var(--billing-space-4);
+  grid-template-columns: 1fr;
+}
+
+.billing-grid-auto {
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+
+/* Card Responsive Behavior */
+.billing-card {
+  padding: var(--billing-space-4);
+  border-radius: var(--billing-radius-lg);
+  background: white;
+  border: 1px solid var(--billing-gray-200);
+  box-shadow: var(--billing-shadow-sm);
+  transition: all var(--billing-duration-normal) var(--billing-ease-out);
+}
+
+.billing-card:hover {
+  box-shadow: var(--billing-shadow-md);
+}
+
+/* Pricing Card Responsive */
+.pricing-card {
+  min-height: 400px;
+  display: flex;
+  flex-direction: column;
+}
+
+.pricing-card-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.pricing-card-features {
+  flex: 1;
+  margin: var(--billing-space-4) 0;
+}
+
+.pricing-card-action {
+  margin-top: auto;
+}
+
+/* Button Responsive */
+.billing-button {
+  padding: var(--billing-space-3) var(--billing-space-4);
+  font-size: var(--billing-text-sm);
+  border-radius: var(--billing-radius-md);
+  font-weight: var(--billing-font-medium);
+  transition: all var(--billing-duration-normal) var(--billing-ease-out);
+  touch-action: manipulation;
+  min-height: 44px;
+  /* Minimum touch target */
+}
+
+.billing-button-full {
+  width: 100%;
+}
+
+/* Typography Responsive */
+.billing-heading-1 {
+  font-size: var(--billing-text-2xl);
+  font-weight: var(--billing-font-bold);
+  line-height: 1.2;
+  margin-bottom: var(--billing-space-4);
+}
+
+.billing-heading-2 {
+  font-size: var(--billing-text-xl);
+  font-weight: var(--billing-font-semibold);
+  line-height: 1.3;
+  margin-bottom: var(--billing-space-3);
+}
+
+.billing-text {
+  font-size: var(--billing-text-base);
+  line-height: 1.5;
+  color: var(--billing-gray-600);
+}
+
+.billing-text-small {
+  font-size: var(--billing-text-sm);
+  line-height: 1.4;
+  color: var(--billing-gray-500);
+}
+
+/* Progress Bar Responsive */
+.billing-progress {
+  width: 100%;
+  height: var(--billing-progress-height);
+  background: var(--billing-progress-bg);
+  border-radius: var(--billing-progress-radius);
+  overflow: hidden;
+}
+
+.billing-progress-fill {
+  height: 100%;
+  background: var(--billing-progress-fill);
+  border-radius: var(--billing-progress-radius);
+  transition: width var(--billing-duration-slow) var(--billing-ease-out);
+}
+
+/* Trust Badges Responsive */
+.trust-badges-grid {
+  display: grid;
+  gap: var(--billing-space-4);
+  grid-template-columns: 1fr;
+}
+
+.trust-badge {
+  text-align: center;
+  padding: var(--billing-space-4);
+  background: white;
+  border-radius: var(--billing-radius-lg);
+  border: 1px solid var(--billing-gray-200);
+  transition: all var(--billing-duration-normal) var(--billing-ease-out);
+}
+
+.trust-badge:hover {
+  border-color: var(--billing-gray-300);
+  box-shadow: var(--billing-shadow-md);
+}
+
+/* Comparison Table Responsive */
+.billing-comparison {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.billing-comparison-table {
+  min-width: 600px;
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.billing-comparison-cell {
+  padding: var(--billing-space-3);
+  border: 1px solid var(--billing-gray-200);
+  text-align: center;
+  vertical-align: middle;
+}
+
+/* Loading States */
+.billing-skeleton {
+  background: linear-gradient(90deg, var(--billing-gray-200) 25%, var(--billing-gray-100) 50%, var(--billing-gray-200) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: var(--billing-radius-md);
+}
+
+/* Tablet Styles */
+@media (min-width: 640px) {
+  .billing-layout {
+    padding: var(--billing-space-6);
+  }
+
+  .billing-container {
+    padding: 0 var(--billing-space-6);
+  }
+
+  .billing-grid {
+    gap: var(--billing-space-6);
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .billing-card {
+    padding: var(--billing-space-6);
+  }
+
+  .billing-button {
+    padding: var(--billing-space-3) var(--billing-space-6);
+    font-size: var(--billing-text-base);
+  }
+
+  .billing-heading-1 {
+    font-size: var(--billing-text-3xl);
+  }
+
+  .billing-heading-2 {
+    font-size: var(--billing-text-2xl);
+  }
+
+  .trust-badges-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* Desktop Styles */
+@media (min-width: 768px) {
+  .billing-layout {
+    padding: var(--billing-space-8);
+  }
+
+  .billing-container {
+    max-width: 1200px;
+    padding: 0 var(--billing-space-8);
+  }
+
+  .billing-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .trust-badges-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .billing-comparison-table {
+    min-width: auto;
+  }
+}
+
+/* Large Desktop Styles */
+@media (min-width: 1024px) {
+  .billing-container {
+    max-width: 1400px;
+  }
+
+  .billing-heading-1 {
+    font-size: var(--billing-text-4xl);
+  }
+
+  .pricing-card {
+    min-height: 500px;
+  }
+}
+
+/* Extra Large Desktop Styles */
+@media (min-width: 1280px) {
+  .billing-container {
+    max-width: 1600px;
+  }
+}
+
+/* Detailed View (Desktop with Left Menu) */
+@media (min-width: 1024px) {
+  .billing-detailed-view {
+    display: grid;
+    grid-template-columns: 250px 1fr;
+    gap: var(--billing-space-8);
+    min-height: 100vh;
+  }
+
+  .billing-detailed-sidebar {
+    background: var(--billing-gray-50);
+    padding: var(--billing-space-6);
+    border-right: 1px solid var(--billing-gray-200);
+  }
+
+  .billing-detailed-content {
+    padding: var(--billing-space-6);
+    max-width: calc(100vw - 250px - var(--billing-space-16));
+  }
+}
+
+/* Simple View (Mobile without Left Menu) */
+@media (max-width: 1023px) {
+  .billing-simple-view {
+    padding: var(--billing-space-4);
+  }
+
+  .billing-simple-header {
+    position: sticky;
+    top: 0;
+    background: white;
+    z-index: var(--billing-z-sticky);
+    padding: var(--billing-space-4);
+    border-bottom: 1px solid var(--billing-gray-200);
+    margin: calc(-1 * var(--billing-space-4)) calc(-1 * var(--billing-space-4)) var(--billing-space-4);
+  }
+}
+
+/* Touch Device Optimizations */
+@media (hover: none) and (pointer: coarse) {
+  .billing-button {
+    min-height: 48px;
+    padding: var(--billing-space-4) var(--billing-space-6);
+  }
+
+  .trust-badge {
+    padding: var(--billing-space-6);
+  }
+
+  .billing-card:hover {
+    box-shadow: var(--billing-shadow-sm);
+  }
+
+  .trust-badge:hover {
+    border-color: var(--billing-gray-200);
+    box-shadow: var(--billing-shadow-sm);
+  }
+}
+
+/* Print Styles */
+@media print {
+  .billing-layout {
+    padding: 0;
+    background: white;
+  }
+
+  .billing-card {
+    box-shadow: none;
+    border: 1px solid var(--billing-gray-300);
+    break-inside: avoid;
+  }
+
+  .billing-button {
+    display: none;
+  }
+
+  .billing-animation,
+  .billing-hover-effect {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* Reduced Motion Support */
+@media (prefers-reduced-motion: reduce) {
+
+  .billing-card,
+  .billing-button,
+  .trust-badge,
+  .billing-progress-fill {
+    transition: none;
+  }
+
+  .billing-skeleton {
+    animation: none;
+    background: var(--billing-gray-200);
+  }
+}
+
+/* High Contrast Mode */
+@media (prefers-contrast: high) {
+  .billing-card {
+    border: 2px solid var(--billing-gray-900);
+  }
+
+  .billing-button {
+    border: 2px solid currentColor;
+  }
+
+  .trust-badge {
+    border: 2px solid var(--billing-gray-900);
+  }
+}

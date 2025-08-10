@@ -1,0 +1,210 @@
+/* Layout Module Styles */
+.container {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 1.5rem;
+  transition: all 0.3s ease-out;
+}
+
+/* Header Styles */
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
+
+.titleWrapper {
+  animation: fadeIn 0.8s ease-out;
+}
+
+.title {
+  font-size: 2rem;
+  font-weight: 700;
+  color: #111827;
+  margin: 0;
+  background: linear-gradient(90deg, #2563EB, #3B82F6);
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.subtitle {
+  font-size: 1rem;
+  color: #6B7280;
+  margin-top: 0.25rem;
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.viewToggle {
+  padding: 0.5rem 1rem;
+  background-color: #F3F4F6;
+  border: 1px solid #E5E7EB;
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+  color: #4B5563;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.viewToggle:hover {
+  background-color: #E5E7EB;
+}
+
+/* Progress Container */
+.progressContainer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 2rem;
+  text-align: center;
+}
+
+.progressMessage {
+  margin-top: 1rem;
+  font-size: 0.875rem;
+  color: #6B7280;
+  animation: fadeIn 0.5s ease-out;
+}
+
+.completedMessage {
+  margin-top: 1rem;
+  font-size: 0.875rem;
+  color: #10B981;
+  font-weight: 500;
+  animation: fadeIn 0.5s ease-out;
+}
+
+/* Progress Indicator */
+.progressIndicator {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+.progressRing {
+  position: relative;
+  width: 100px;
+  height: 100px;
+}
+
+.progressBackground {
+  stroke: #E5E7EB;
+}
+
+.progressForeground {
+  stroke: #2563EB;
+  transition: stroke-dashoffset 1s ease;
+}
+
+.progressForeground.milestone {
+  animation: pulse 1s ease-out;
+}
+
+.progressPercentage {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #2563EB;
+}
+
+.progressSections {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: 100%;
+  max-width: 300px;
+}
+
+.progressSection {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  color: #6B7280;
+  transition: all 0.2s ease;
+}
+
+.progressSection.completed {
+  color: #10B981;
+}
+
+.progressSection.active {
+  color: #2563EB;
+  font-weight: 500;
+}
+
+.sectionIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+.sectionLabel {
+  flex: 1;
+}
+
+/* Content */
+.content {
+  animation: fadeIn 0.5s ease-out;
+}
+
+/* Simple View Specific Styles */
+.simpleView .content {
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes pulse {
+  0% {
+    stroke-width: 8;
+  }
+  50% {
+    stroke-width: 12;
+  }
+  100% {
+    stroke-width: 8;
+  }
+}
+
+/* Responsive Styles */
+@media (max-width: 768px) {
+  .header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1rem;
+  }
+  
+  .controls {
+    width: 100%;
+    justify-content: flex-start;
+  }
+  
+  .progressSections {
+    max-width: 100%;
+  }
+}

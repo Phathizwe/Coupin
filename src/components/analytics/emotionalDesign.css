@@ -1,0 +1,336 @@
+/* emotionalDesign.css - Emotional Design System for Analytics Dashboard */
+
+/* Emotional Color Variables */
+:root {
+  /* Primary emotional colors */
+  --success-emotion: #10B981; /* Growth, achievement */
+  --attention-emotion: #F59E0B; /* Opportunity, focus */
+  --neutral-emotion: #6B7280; /* Stability, calm */
+  --premium-emotion: #8B5CF6; /* Quality, sophistication */
+  
+  /* Secondary emotional colors */
+  --joy-emotion: #3B82F6; /* Delight, positivity */
+  --calm-emotion: #0EA5E9; /* Trust, reliability */
+  --energy-emotion: #F97316; /* Motivation, action */
+  --growth-emotion: #22C55E; /* Progress, improvement */
+  
+  /* Emotional gradients */
+  --success-gradient: linear-gradient(135deg, #10B981, #059669);
+  --attention-gradient: linear-gradient(135deg, #F59E0B, #D97706);
+  --premium-gradient: linear-gradient(135deg, #8B5CF6, #7C3AED);
+  --joy-gradient: linear-gradient(135deg, #3B82F6, #2563EB);
+  
+  /* Animation timing */
+  --micro-timing: 200ms;
+  --standard-timing: 300ms;
+  --elaborate-timing: 500ms;
+  
+  /* Animation easing */
+  --standard-easing: cubic-bezier(0.4, 0.0, 0.2, 1);
+  --decelerate-easing: cubic-bezier(0.0, 0.0, 0.2, 1);
+  --accelerate-easing: cubic-bezier(0.4, 0.0, 1, 1);
+  
+  /* Elevation/depth */
+  --elevation-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --elevation-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --elevation-shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  --elevation-shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  
+  /* Spacing rhythm */
+  --space-xs: 0.25rem;
+  --space-sm: 0.5rem;
+  --space-md: 1rem;
+  --space-lg: 1.5rem;
+  --space-xl: 2rem;
+}
+
+/* Respect user preferences for reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ===== VISCERAL LEVEL DESIGN ===== */
+
+/* Page Entry Animation */
+.emotional-dashboard-enter {
+  opacity: 0;
+  transform: translateY(10px);
+}
+
+.emotional-dashboard-enter-active {
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity var(--standard-timing) var(--decelerate-easing),
+              transform var(--standard-timing) var(--decelerate-easing);
+}
+
+/* Card Staggered Animation */
+.emotional-card {
+  opacity: 0;
+  transform: translateY(15px);
+  animation: fadeInUp var(--standard-timing) var(--decelerate-easing) forwards;
+}
+
+.emotional-card:nth-child(1) { animation-delay: 100ms; }
+.emotional-card:nth-child(2) { animation-delay: 150ms; }
+.emotional-card:nth-child(3) { animation-delay: 200ms; }
+.emotional-card:nth-child(4) { animation-delay: 250ms; }
+
+@keyframes fadeInUp {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Chart Container Animation */
+.emotional-chart-container {
+  opacity: 0;
+  transform: translateY(20px);
+  animation: fadeInUp var(--standard-timing) var(--decelerate-easing) forwards;
+  animation-delay: 300ms;
+}
+
+/* Hover States */
+.emotional-card-hover {
+  transition: transform var(--micro-timing) var(--standard-easing),
+              box-shadow var(--micro-timing) var(--standard-easing);
+}
+
+.emotional-card-hover:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--elevation-shadow-lg);
+}
+
+/* Icon Pulse Animation for Empty States */
+.emotional-icon-pulse {
+  animation: iconPulse 2s var(--standard-easing) infinite;
+}
+
+@keyframes iconPulse {
+  0% { opacity: 0.7; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.05); }
+  100% { opacity: 0.7; transform: scale(1); }
+}
+
+/* ===== BEHAVIORAL LEVEL DESIGN ===== */
+
+/* Interactive Elements */
+.emotional-button {
+  transition: background-color var(--micro-timing) var(--standard-easing),
+              transform var(--micro-timing) var(--standard-easing),
+              box-shadow var(--micro-timing) var(--standard-easing);
+}
+
+.emotional-button:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--elevation-shadow-md);
+}
+
+.emotional-button:active {
+  transform: translateY(0);
+  box-shadow: var(--elevation-shadow-sm);
+}
+
+/* Select Dropdown Animation */
+.emotional-select {
+  transition: border-color var(--micro-timing) var(--standard-easing),
+              box-shadow var(--micro-timing) var(--standard-easing);
+}
+
+.emotional-select:hover {
+  border-color: var(--premium-emotion);
+}
+
+.emotional-select:focus {
+  border-color: var(--premium-emotion);
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.2);
+}
+
+/* Progress Bar Animation */
+.emotional-progress-bar {
+  position: relative;
+  overflow: hidden;
+}
+
+.emotional-progress-bar::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.2) 50%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  transform: translateX(-100%);
+  animation: progressShimmer 2s infinite;
+}
+
+@keyframes progressShimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+/* Loading State Animation */
+.emotional-loading-pulse {
+  animation: loadingPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes loadingPulse {
+  0% { opacity: 0.6; }
+  50% { opacity: 1; }
+  100% { opacity: 0.6; }
+}
+
+/* ===== REFLECTIVE LEVEL DESIGN ===== */
+
+/* Achievement Celebration */
+.emotional-achievement {
+  position: relative;
+}
+
+.emotional-achievement-indicator {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--success-gradient);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 14px;
+  box-shadow: var(--elevation-shadow-md);
+  opacity: 0;
+  transform: scale(0);
+  animation: achievementPop 0.5s var(--standard-easing) forwards;
+  animation-delay: 1s;
+}
+
+@keyframes achievementPop {
+  0% { opacity: 0; transform: scale(0); }
+  70% { opacity: 1; transform: scale(1.2); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+/* Positive Growth Indicator */
+.emotional-growth-positive {
+  color: var(--success-emotion);
+  display: inline-flex;
+  align-items: center;
+  font-weight: 600;
+}
+
+.emotional-growth-positive svg {
+  margin-right: 4px;
+  animation: bounceUp 1s var(--standard-easing) infinite;
+}
+
+@keyframes bounceUp {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-2px); }
+}
+
+/* Negative Growth Indicator - Supportive Design */
+.emotional-growth-negative {
+  color: var(--attention-emotion);
+  display: inline-flex;
+  align-items: center;
+  font-weight: 600;
+}
+
+.emotional-growth-negative svg {
+  margin-right: 4px;
+}
+
+/* Confetti Animation for Milestone Celebration */
+.emotional-confetti-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 1000;
+}
+
+/* Time-based greeting */
+.emotional-greeting {
+  font-size: 1.25rem;
+  font-weight: 500;
+  margin-bottom: 0.5rem;
+  opacity: 0;
+  transform: translateY(10px);
+  animation: fadeInUp 0.5s var(--decelerate-easing) forwards;
+}
+
+/* Empty state enhancements */
+.emotional-empty-state {
+  transition: transform var(--standard-timing) var(--standard-easing);
+}
+
+.emotional-empty-state:hover {
+  transform: scale(1.02);
+}
+
+/* Tooltip styles */
+.emotional-tooltip {
+  position: relative;
+}
+
+.emotional-tooltip::before {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%) translateY(-5px);
+  padding: 0.5rem 0.75rem;
+  background-color: #1F2937;
+  color: white;
+  border-radius: 0.375rem;
+  font-size: 0.75rem;
+  white-space: nowrap;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity var(--micro-timing) var(--standard-easing),
+              transform var(--micro-timing) var(--standard-easing),
+              visibility var(--micro-timing) var(--standard-easing);
+  z-index: 10;
+  pointer-events: none;
+}
+
+.emotional-tooltip::after {
+  content: '';
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border-width: 5px;
+  border-style: solid;
+  border-color: #1F2937 transparent transparent transparent;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity var(--micro-timing) var(--standard-easing),
+              visibility var(--micro-timing) var(--standard-easing);
+  z-index: 10;
+  pointer-events: none;
+}
+
+.emotional-tooltip:hover::before,
+.emotional-tooltip:hover::after {
+  opacity: 1;
+  visibility: visible;
+  transform: translateX(-50%) translateY(0);
+}

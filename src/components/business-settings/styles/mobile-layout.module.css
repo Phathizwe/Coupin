@@ -1,0 +1,181 @@
+/* Mobile Layout Module Styles */
+.container {
+  width: 100%;
+  padding: 1rem;
+  transition: all 0.3s ease-out;
+}
+
+/* Header Styles */
+.header {
+  margin-bottom: 1rem;
+}
+
+.titleWrapper {
+  animation: fadeIn 0.8s ease-out;
+}
+
+.title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #111827;
+  margin: 0;
+  background: linear-gradient(90deg, #2563EB, #3B82F6);
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.subtitle {
+  font-size: 0.875rem;
+  color: #6B7280;
+  margin-top: 0.25rem;
+}
+
+/* Progress Bar */
+.progressBar {
+  position: relative;
+  height: 0.5rem;
+  background-color: #E5E7EB;
+  border-radius: 0.25rem;
+  margin-bottom: 1rem;
+  overflow: hidden;
+}
+
+.progressFill {
+  height: 100%;
+  background: linear-gradient(90deg, #2563EB, #3B82F6);
+  border-radius: 0.25rem;
+  transition: width 0.5s ease-out;
+}
+
+.progressText {
+  position: absolute;
+  top: 0.6rem;
+  right: 0;
+  font-size: 0.75rem;
+  color: #4B5563;
+  font-weight: 500;
+}
+
+/* Tab Selector */
+.tabSelector {
+  position: relative;
+  margin-bottom: 1rem;
+}
+
+.tabSelectorButton {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 0.75rem 1rem;
+  background-color: #F3F4F6;
+  border: 1px solid #E5E7EB;
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+  color: #4B5563;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.tabSelectorButton:hover {
+  background-color: #E5E7EB;
+}
+
+.dropdownIcon {
+  font-size: 0.75rem;
+  margin-left: 0.5rem;
+}
+
+.tabMenu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  width: 100%;
+  background-color: white;
+  border: 1px solid #E5E7EB;
+  border-radius: 0.375rem;
+  margin-top: 0.25rem;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  z-index: 10;
+  animation: slideDown 0.2s ease-out;
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+.tabMenuItem {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: none;
+  background-color: transparent;
+  font-size: 0.875rem;
+  color: #4B5563;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border-bottom: 1px solid #F3F4F6;
+}
+
+.tabMenuItem:last-child {
+  border-bottom: none;
+}
+
+.tabMenuItem:hover {
+  background-color: #F9FAFB;
+}
+
+.tabIcon {
+  margin-right: 0.5rem;
+  font-size: 1rem;
+  min-width: 1.5rem;
+  text-align: center;
+}
+
+.tabName {
+  flex: 1;
+}
+
+.tabStatus {
+  margin-left: 0.5rem;
+}
+
+.activeTab {
+  background-color: #EFF6FF;
+  color: #2563EB;
+  font-weight: 500;
+}
+
+.completedTab .tabStatus {
+  color: #10B981;
+}
+
+/* Content */
+.content {
+  animation: fadeIn 0.5s ease-out;
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

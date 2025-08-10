@@ -1,0 +1,17 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // More permissive rules for development
+    match /businesses/{businessId}/logos/{fileName} {
+      allow read: if true; // Public read access for logos
+      // Allow write without auth for development purposes
+      allow write: if true; 
+    }
+    
+    // Default rule for other files - more permissive for development
+    match /{allPaths=**} {
+      allow read: if true;
+      allow write: if request.auth != null || request.origin.matches('http://localhost:3000') || request.origin.matches('http://192.168.0.136:3000');
+    }
+  }
+}

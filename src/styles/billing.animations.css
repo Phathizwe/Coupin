@@ -1,0 +1,251 @@
+/* Billing Animations - Emotional Design CSS */
+
+/* Keyframe Animations */
+@keyframes billingFadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes billingScaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes billingSlideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+    max-height: 0;
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    max-height: 1000px;
+  }
+}
+
+@keyframes billingPulse {
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.7;
+  }
+}
+
+@keyframes billingGlow {
+
+  0%,
+  100% {
+    box-shadow: 0 0 5px rgba(59, 130, 246, 0.3);
+  }
+
+  50% {
+    box-shadow: 0 0 20px rgba(59, 130, 246, 0.6);
+  }
+}
+
+@keyframes billingShimmer {
+  0% {
+    background-position: -200px 0;
+  }
+
+  100% {
+    background-position: calc(200px + 100%) 0;
+  }
+}
+
+@keyframes billingBounce {
+
+  0%,
+  20%,
+  53%,
+  80%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+
+  40%,
+  43% {
+    transform: translate3d(0, -8px, 0);
+  }
+
+  70% {
+    transform: translate3d(0, -4px, 0);
+  }
+
+  90% {
+    transform: translate3d(0, -2px, 0);
+  }
+}
+
+@keyframes billingProgressFill {
+  from {
+    width: 0%;
+  }
+
+  to {
+    width: var(--progress-width, 100%);
+  }
+}
+
+/* Animation Classes */
+.billing-fade-in-up {
+  animation: billingFadeInUp 0.6s ease-out forwards;
+}
+
+.billing-scale-in {
+  animation: billingScaleIn 0.4s ease-out forwards;
+}
+
+.billing-slide-down {
+  animation: billingSlideDown 0.5s ease-out forwards;
+}
+
+.billing-pulse {
+  animation: billingPulse 2s ease-in-out infinite;
+}
+
+.billing-glow {
+  animation: billingGlow 2s ease-in-out infinite;
+}
+
+.billing-shimmer {
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
+  background-size: 200px 100%;
+  animation: billingShimmer 1.5s infinite;
+}
+
+.billing-bounce {
+  animation: billingBounce 1s ease-in-out;
+}
+
+.billing-progress-fill {
+  animation: billingProgressFill 1s ease-out forwards;
+}
+
+/* Staggered Animation Delays */
+.billing-stagger-1 {
+  animation-delay: 0.1s;
+}
+
+.billing-stagger-2 {
+  animation-delay: 0.2s;
+}
+
+.billing-stagger-3 {
+  animation-delay: 0.3s;
+}
+
+.billing-stagger-4 {
+  animation-delay: 0.4s;
+}
+
+.billing-stagger-5 {
+  animation-delay: 0.5s;
+}
+
+/* Hover Animations */
+.billing-hover-lift {
+  transition: transform 0.2s ease-out, box-shadow 0.2s ease-out;
+}
+
+.billing-hover-lift:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+}
+
+.billing-hover-scale {
+  transition: transform 0.2s ease-out;
+}
+
+.billing-hover-scale:hover {
+  transform: scale(1.02);
+}
+
+.billing-hover-glow {
+  transition: box-shadow 0.3s ease-out;
+}
+
+.billing-hover-glow:hover {
+  box-shadow: 0 0 20px rgba(59, 130, 246, 0.3);
+}
+
+/* Loading States */
+.billing-skeleton {
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: billingShimmer 1.5s infinite;
+}
+
+.billing-loading-dots::after {
+  content: '';
+  animation: billingPulse 1.5s infinite;
+}
+
+/* Celebration Effects */
+.billing-celebration {
+  position: relative;
+  overflow: hidden;
+}
+
+.billing-celebration::before {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: radial-gradient(circle, rgba(59, 130, 246, 0.1) 0%, transparent 70%);
+  animation: billingBounce 0.6s ease-out;
+  pointer-events: none;
+}
+
+/* Responsive Animation Controls */
+@media (prefers-reduced-motion: reduce) {
+
+  .billing-fade-in-up,
+  .billing-scale-in,
+  .billing-slide-down,
+  .billing-pulse,
+  .billing-glow,
+  .billing-shimmer,
+  .billing-bounce,
+  .billing-progress-fill {
+    animation: none;
+  }
+
+  .billing-hover-lift:hover,
+  .billing-hover-scale:hover {
+    transform: none;
+  }
+}
+
+/* Focus States for Accessibility */
+.billing-focus-ring:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3);
+}
+
+.billing-focus-ring:focus-visible {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+}

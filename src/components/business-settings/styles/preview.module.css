@@ -1,0 +1,581 @@
+/* Preview Module Styles */
+.previewPanel {
+  background-color: #FFFFFF;
+  border-radius: 0.5rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  transition: all 0.3s ease;
+}
+
+.previewPanel:hover {
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.previewHeader {
+  padding: 1rem;
+  border-bottom: 1px solid #E5E7EB;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.previewTitle {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #111827;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.previewIcon {
+  font-size: 1.125rem;
+}
+
+.previewControls {
+  display: flex;
+  gap: 0.5rem;
+  overflow-x: auto;
+  padding-bottom: 0.25rem;
+}
+
+.previewTypeButton {
+  background: none;
+  border: 1px solid #E5E7EB;
+  border-radius: 0.375rem;
+  padding: 0.375rem 0.75rem;
+  font-size: 0.75rem;
+  color: #6B7280;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.previewTypeButton:hover {
+  background-color: #F9FAFB;
+  border-color: #D1D5DB;
+}
+
+.previewTypeButton.active {
+  background-color: #EFF6FF;
+  border-color: #2563EB;
+  color: #2563EB;
+}
+
+.previewContent {
+  flex: 1;
+  padding: 1rem;
+  overflow-y: auto;
+  position: relative;
+}
+
+.previewLoading {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(255, 255, 255, 0.8);
+  z-index: 10;
+  animation: fadeIn 0.3s ease-out;
+}
+
+.previewSpinner {
+  width: 2rem;
+  height: 2rem;
+  border: 3px solid #E5E7EB;
+  border-top-color: #2563EB;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-bottom: 0.5rem;
+}
+
+.previewFooter {
+  padding: 0.75rem 1rem;
+  border-top: 1px solid #E5E7EB;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.updateIndicator {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  color: #6B7280;
+}
+
+.updateIcon {
+  animation: rotate 2s linear infinite;
+  display: inline-block;
+}
+
+/* Mobile Preview Styles */
+.mobilePreview {
+  width: 100%;
+  max-width: 320px;
+  margin: 0 auto;
+  border: 10px solid #1F2937;
+  border-radius: 2rem;
+  overflow: hidden;
+  height: 580px;
+  display: flex;
+  flex-direction: column;
+  background-color: #F9FAFB;
+  animation: fadeIn 0.5s ease-out;
+}
+
+.mobileHeader {
+  background-color: #2563EB;
+  color: white;
+}
+
+.statusBar {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.25rem 1rem;
+  font-size: 0.75rem;
+}
+
+.time {
+  font-weight: 500;
+}
+
+.icons {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.appHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem;
+}
+
+.backButton, .menuButton {
+  width: 1.5rem;
+  height: 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.headerTitle {
+  font-weight: 600;
+}
+
+.mobileContent {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1rem;
+}
+
+.businessCard {
+  background-color: white;
+  border-radius: 0.75rem;
+  padding: 1.25rem;
+  margin-bottom: 1.25rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.businessLogo {
+  width: 4rem;
+  height: 4rem;
+  border-radius: 0.5rem;
+  background-color: #EFF6FF;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 1rem;
+  overflow: hidden;
+}
+
+.businessLogo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.logoPlaceholder {
+  font-size: 2rem;
+}
+
+.businessInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.businessName {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: #111827;
+  margin: 0;
+}
+
+.businessCategory {
+  font-size: 0.75rem;
+  color: #6B7280;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.businessDescription {
+  font-size: 0.875rem;
+  color: #4B5563;
+  margin: 0.5rem 0;
+  line-height: 1.4;
+}
+
+.contactInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.contactItem {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  color: #4B5563;
+}
+
+.contactIcon {
+  width: 1rem;
+  display: inline-flex;
+  justify-content: center;
+}
+
+.previewCoupons {
+  margin-top: 1rem;
+}
+
+.sectionTitle {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #111827;
+  margin: 0 0 0.75rem 0;
+}
+
+.couponCard {
+  background-color: white;
+  border-radius: 0.5rem;
+  overflow: hidden;
+  border: 1px solid #2563EB;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.couponHeader {
+  background-color: #2563EB;
+  color: white;
+  padding: 0.75rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.couponTitle {
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.couponValue {
+  font-weight: 700;
+  font-size: 1rem;
+}
+
+.couponBody {
+  padding: 0.75rem;
+  font-size: 0.75rem;
+  color: #4B5563;
+}
+
+.couponCode {
+  background-color: #F3F4F6;
+  padding: 0.5rem;
+  border-radius: 0.25rem;
+  text-align: center;
+  font-weight: 600;
+  margin: 0.5rem 0;
+  letter-spacing: 0.05em;
+}
+
+.couponExpiry {
+  font-size: 0.75rem;
+  color: #6B7280;
+  text-align: center;
+}
+
+.mobileFooter {
+  display: flex;
+  justify-content: space-around;
+  padding: 0.75rem 0;
+  background-color: white;
+  border-top: 1px solid #E5E7EB;
+}
+
+.navItem {
+  font-size: 1.25rem;
+  width: 3rem;
+  height: 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Receipt Preview Styles */
+.receiptPreview {
+  width: 100%;
+  max-width: 300px;
+  margin: 0 auto;
+  background-color: white;
+  padding: 1.5rem 1rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  animation: fadeIn 0.5s ease-out;
+}
+
+.receiptHeader {
+  text-align: center;
+  margin-bottom: 1.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px dashed #D1D5DB;
+}
+
+.receiptLogo {
+  width: 3rem;
+  height: 3rem;
+  margin: 0 auto 0.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.receiptLogo img {
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.receiptBusinessName {
+  font-size: 1.125rem;
+  font-weight: 600;
+  margin: 0 0 0.5rem;
+}
+
+.receiptAddress, .receiptPhone, .receiptDate, .receiptNumber {
+  font-size: 0.75rem;
+  color: #6B7280;
+  margin: 0.25rem 0;
+}
+
+.receiptItems {
+  margin-bottom: 1.5rem;
+}
+
+.receiptItem {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.5rem 0;
+  font-size: 0.875rem;
+  border-bottom: 1px solid #F3F4F6;
+}
+
+.itemName {
+  color: #4B5563;
+}
+
+.itemPrice {
+  font-weight: 500;
+  color: #111827;
+}
+
+.receiptSummary {
+  margin-bottom: 1.5rem;
+  padding-top: 0.5rem;
+}
+
+.summaryItem {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.875rem;
+  color: #6B7280;
+  margin-bottom: 0.5rem;
+}
+
+.summaryTotal {
+  display: flex;
+  justify-content: space-between;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #111827;
+  padding-top: 0.5rem;
+  border-top: 1px solid #E5E7EB;
+}
+
+.receiptFooter {
+  text-align: center;
+  font-size: 0.75rem;
+  color: #6B7280;
+  padding-top: 1rem;
+  border-top: 1px dashed #D1D5DB;
+}
+
+.receiptWebsite {
+  margin-top: 0.5rem;
+  font-weight: 500;
+}
+
+/* Coupon Preview Styles */
+.couponPreview {
+  width: 100%;
+  max-width: 300px;
+  margin: 0 auto;
+  border: 2px dashed #2563EB;
+  border-radius: 0.75rem;
+  overflow: hidden;
+  background-color: #EFF6FF;
+  animation: fadeIn 0.5s ease-out;
+}
+
+.couponPreviewHeader {
+  background-color: #2563EB;
+  color: white;
+  padding: 1rem;
+  text-align: center;
+}
+
+.couponPreviewLogo {
+  width: 3rem;
+  height: 3rem;
+  margin: 0 auto 0.75rem;
+  background-color: white;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.couponPreviewLogo img {
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.couponPreviewTitle {
+  font-size: 1rem;
+  font-weight: 600;
+  margin: 0 0 0.5rem;
+}
+
+.couponPreviewOffer {
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+
+.couponPreviewContent {
+  padding: 1.25rem;
+}
+
+.couponPreviewDescription {
+  font-size: 0.875rem;
+  color: #4B5563;
+  text-align: center;
+  margin: 0 0 1rem;
+  line-height: 1.4;
+}
+
+.couponPreviewCode {
+  background-color: white;
+  padding: 0.75rem;
+  border-radius: 0.375rem;
+  text-align: center;
+  margin-bottom: 1rem;
+}
+
+.codeLabel {
+  display: block;
+  font-size: 0.75rem;
+  color: #6B7280;
+  margin-bottom: 0.25rem;
+}
+
+.codeValue {
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: #111827;
+  letter-spacing: 0.05em;
+}
+
+.couponPreviewValidity {
+  text-align: center;
+  margin-bottom: 1rem;
+}
+
+.validityLabel {
+  font-size: 0.75rem;
+  color: #6B7280;
+  margin-right: 0.5rem;
+}
+
+.validityValue {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #111827;
+}
+
+.couponPreviewTerms {
+  font-size: 0.75rem;
+  color: #6B7280;
+  text-align: center;
+  padding-top: 0.75rem;
+  border-top: 1px dashed #D1D5DB;
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes rotate {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Responsive Styles */
+@media (max-width: 768px) {
+  .previewPanel {
+    margin-top: 1.5rem;
+  }
+}

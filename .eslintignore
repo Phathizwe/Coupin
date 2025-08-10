@@ -1,0 +1,2 @@
+# Ignore non-existent files that might be in ESLint's cache
+src/components/features/data/feature-data.ts
