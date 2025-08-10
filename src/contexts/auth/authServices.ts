@@ -18,11 +18,13 @@ import {
   collection,
   query,
   where,
-  getDocs
+  getDocs,
+  serverTimestamp
 } from 'firebase/firestore';
 import { auth, db } from '../../config/firebase';
 import { ExtendedUser } from './types';
 import { BusinessProfile } from '../../types';
+import { findCustomerByPhone, addCustomerToBusiness } from '../../services/customerLookupService';
 
 // Add this function to debug the issue
 const debugUserData = async (userId: string) => {
@@ -73,7 +75,8 @@ export const registerUser = async (
   email: string,
   password: string,
   name: string,
-  role: 'business' | 'customer'
+  role: 'business' | 'customer',
+  phone?: string // Add phone parameter
 ): Promise<ExtendedUser> => {
   try {
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
@@ -90,6 +93,11 @@ export const registerUser = async (
       createdAt: new Date(),
     };
 
+    // Add phone number if provided
+    if (phone) {
+      userData.phoneNumber = phone;
+    }
+
     // If role is business, create a business document
     if (role === 'business') {
       console.log('[authServices] Creating business document for business user');
@@ -104,7 +112,8 @@ export const registerUser = async (
         industry: '',
         createdAt: new Date(),
         ownerId: user.uid,
-        active: true
+        active: true,
+        businessNameLower: name.toLowerCase() // Add lowercase name for searching
       };
 
       await setDoc(businessRef, businessData);
@@ -114,6 +123,51 @@ export const registerUser = async (
       userData.businessId = businessId;
       userData.businesses = [businessId];
       userData.currentBusinessId = businessId;
+    } 
+    // If role is customer and phone is provided, create customer record
+    else if (role === 'customer' && phone) {
+      console.log('[authServices] Creating customer record with phone:', phone);
+      
+      // Check if a customer with this phone already exists
+      const existingCustomer = await findCustomerByPhone(phone);
+      
+      if (existingCustomer) {
+        console.log('[authServices] Found existing customer with phone:', existingCustomer.id);
+        
+        // Link user to existing customer
+        if (!existingCustomer.userId) {
+          // Update customer with user ID
+          await updateDoc(doc(db, 'customers', existingCustomer.id), {
+            userId: user.uid,
+            updatedAt: serverTimestamp()
+          });
+          console.log('[authServices] Linked user to existing customer');
+        }
+      } else {
+        console.log('[authServices] No existing customer found, creating new customer record');
+        
+        // Create a new customer record
+        const nameParts = name.split(' ');
+        const firstName = nameParts[0];
+        const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : '';
+        
+        // Create a customer record without a business ID (will be linked later)
+        const customerData = {
+          firstName,
+          lastName,
+          email: email,
+          phone: phone,
+          userId: user.uid,
+          joinDate: serverTimestamp(),
+          createdAt: serverTimestamp()
+        };
+        
+        const customersRef = collection(db, 'customers');
+        const newCustomerRef = doc(customersRef);
+        await setDoc(newCustomerRef, customerData);
+        
+        console.log('[authServices] Created new customer record:', newCustomerRef.id);
+      }
     }
 
     // Save user data to Firestore
@@ -342,6 +396,10 @@ export const handleUserData = async (firebaseUser: FirebaseUser): Promise<Extend
       extendedUser.businessId = docData.businessId || undefined;
       extendedUser.businesses = docData.businesses || [];
       extendedUser.currentBusinessId = docData.currentBusinessId || docData.businessId || undefined;
+      // Add phone number if it exists
+      if (docData.phoneNumber) {
+        extendedUser.phoneNumber = docData.phoneNumber;
+      }
 
       // Ensure businessId is set correctly for business users
       if (extendedUser.role === 'business') {
@@ -382,7 +440,8 @@ export const handleUserData = async (firebaseUser: FirebaseUser): Promise<Extend
             industry: '',
             createdAt: new Date(),
             ownerId: firebaseUser.uid,
-            active: true
+            active: true,
+            businessNameLower: (firebaseUser.displayName || 'My Business').toLowerCase()
           });
 
           // Update user with business reference
@@ -455,7 +514,8 @@ export const handleUserData = async (firebaseUser: FirebaseUser): Promise<Extend
             industry: '',
             createdAt: new Date(),
             ownerId: firebaseUser.uid,
-            active: true
+            active: true,
+            businessNameLower: (firebaseUser.displayName || 'My Business').toLowerCase()
           });
 
           console.log('[handleUserData] Created missing business document:', extendedUser.businessId);
@@ -484,7 +544,8 @@ export const handleUserData = async (firebaseUser: FirebaseUser): Promise<Extend
       role: extendedUser.role,
       businessId: extendedUser.businessId,
       currentBusinessId: extendedUser.currentBusinessId,
-      hasBusinessProfile: !!extendedUser.businessProfile
+      hasBusinessProfile: !!extendedUser.businessProfile,
+      phoneNumber: extendedUser.phoneNumber
     });
 
     // Final validation before returning
@@ -499,34 +560,5 @@ export const handleUserData = async (firebaseUser: FirebaseUser): Promise<Extend
     console.error('[handleUserData] Error processing user data:', error);
     console.error('[handleUserData] Error stack:', error instanceof Error ? error.stack : 'No stack trace');
     return null;
-  }
-};
-
-// Add this function to your authHelpers.ts file
-export const debugRegistration = async (userId: string) => {
-  try {
-    console.log('=== DEBUG REGISTRATION ===');
-    console.log('Checking user document for ID:', userId);
-
-    const userDoc = await getDoc(doc(db, 'users', userId));
-    console.log('User document exists:', userDoc.exists());
-
-    if (userDoc.exists()) {
-      const userData = userDoc.data();
-      console.log('User data:', userData);
-
-      if (userData.businessId) {
-        console.log('Checking business document for ID:', userData.businessId);
-        const businessDoc = await getDoc(doc(db, 'businesses', userData.businessId));
-        console.log('Business document exists:', businessDoc.exists());
-
-        if (businessDoc.exists()) {
-          console.log('Business data:', businessDoc.data());
-        }
-      }
-    }
-    console.log('=== END DEBUG ===');
-  } catch (error) {
-    console.error('Error in debugRegistration:', error);
   }
 };
