@@ -10,6 +10,7 @@ export interface Business {
   website?: string;
   couponCount?: number;
   saved?: boolean;
+  hasLoyaltyProgram?: boolean; // Added for loyalty program feature
   colors?: {
     primary: string;
     secondary: string;

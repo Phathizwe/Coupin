@@ -111,19 +111,75 @@ export const fetchInitialStores = async (userId: string): Promise<{
  */
 export const fetchPopularBusinesses = async (): Promise<Business[]> => {
   try {
+    // First try to fetch featured businesses
     const businessesRef = collection(db, 'businesses');
-    const q = query(
+    const featuredQuery = query(
       businessesRef,
       where('featured', '==', true),
       limit(10)
     );
     
-    const snapshot = await getDocs(q);
+    const featuredSnapshot = await getDocs(featuredQuery);
     
-    // Transform results into Business objects
+    // If we don't have enough featured businesses, find businesses with loyalty programs
+    if (featuredSnapshot.size < 5) {
+      // Find businesses that have loyalty programs
+      const programsRef = collection(db, 'loyaltyPrograms');
+      const programsQuery = query(
+        programsRef,
+        where('active', '==', true),
+        limit(20)
+      );
+      
+      const programsSnapshot = await getDocs(programsQuery);
+      
+      // Get unique business IDs
+      const businessIds = new Set<string>();
+      programsSnapshot.forEach(doc => {
+        const businessId = doc.data().businessId;
+        if (businessId) {
+          businessIds.add(businessId);
+        }
+      });
+      
+      // Fetch details for these businesses
+      const businesses: Business[] = [];
+      
+      // Convert Set to Array to avoid iteration issues
+      const businessIdArray = Array.from(businessIds);
+      
+      for (const businessId of businessIdArray) {
+        const businessDoc = await getDoc(doc(db, 'businesses', businessId));
+        
+        if (businessDoc.exists()) {
+          const data = businessDoc.data();
+          businesses.push({
+            id: businessDoc.id,
+            name: data.businessName || '',
+            description: data.description || '',
+            logo: data.logo || '',
+            address: data.address || '',
+            phone: data.phone || '',
+            website: data.website || '',
+            industry: data.industry || '',
+            hasLoyaltyProgram: true,
+            saved: false
+          });
+        }
+        
+        // Limit to 10 businesses
+        if (businesses.length >= 10) {
+          break;
+        }
+      }
+      
+      return businesses;
+    }
+    
+    // Transform featured businesses into Business objects
     const businesses: Business[] = [];
     
-    snapshot.forEach(doc => {
+    featuredSnapshot.forEach(doc => {
       const data = doc.data();
       businesses.push({
         id: doc.id,
@@ -134,7 +190,7 @@ export const fetchPopularBusinesses = async (): Promise<Business[]> => {
         phone: data.phone || '',
         website: data.website || '',
         industry: data.industry || '',
-        saved: false // Will be updated later
+        saved: false
       });
     });
     
@@ -168,5 +224,111 @@ export const getBusinessPrograms = async (businessId: string) => {
   } catch (error) {
     console.error('Error getting business programs:', error);
     throw error;
+  }
+};
+
+/**
+ * Fetches businesses with loyalty programs
+ * @param limit Number of businesses to fetch
+ * @returns Array of businesses with loyalty programs
+ */
+export const fetchBusinessesWithLoyaltyPrograms = async (limitCount = 10): Promise<Business[]> => {
+  try {
+    // Find businesses that have loyalty programs
+    const programsRef = collection(db, 'loyaltyPrograms');
+    const programsQuery = query(
+      programsRef,
+      where('active', '==', true),
+      limit(limitCount * 2) // Fetch more to account for duplicates
+    );
+    
+    const programsSnapshot = await getDocs(programsQuery);
+    
+    // Get unique business IDs
+    const businessIds = new Set<string>();
+    programsSnapshot.forEach(doc => {
+      const businessId = doc.data().businessId;
+      if (businessId) {
+        businessIds.add(businessId);
+      }
+    });
+    
+    // Fetch details for these businesses
+    const businesses: Business[] = [];
+    
+    // Convert Set to Array to avoid iteration issues
+    const businessIdArray = Array.from(businessIds);
+    
+    for (const businessId of businessIdArray) {
+      const businessDoc = await getDoc(doc(db, 'businesses', businessId));
+      
+      if (businessDoc.exists()) {
+        const data = businessDoc.data();
+        businesses.push({
+          id: businessDoc.id,
+          name: data.businessName || '',
+          description: data.description || '',
+          logo: data.logo || '',
+          address: data.address || '',
+          phone: data.phone || '',
+          website: data.website || '',
+          industry: data.industry || '',
+          hasLoyaltyProgram: true,
+          saved: false
+        });
+      }
+      
+      // Limit to requested number of businesses
+      if (businesses.length >= limitCount) {
+        break;
+      }
+    }
+    
+    return businesses;
+  } catch (error) {
+    console.error('Error fetching businesses with loyalty programs:', error);
+    return [];
+  }
+};
+
+/**
+ * Fetches businesses by industry
+ * @param industry The industry to filter by
+ * @param limitCount Number of businesses to fetch
+ * @returns Array of businesses in the specified industry
+ */
+export const fetchBusinessesByIndustry = async (industry: string, limitCount = 10): Promise<Business[]> => {
+  try {
+    const businessesRef = collection(db, 'businesses');
+    const q = query(
+      businessesRef,
+      where('industry', '==', industry),
+      limit(limitCount)
+    );
+    
+    const snapshot = await getDocs(q);
+    
+    // Transform results into Business objects
+    const businesses: Business[] = [];
+    
+    snapshot.forEach(doc => {
+      const data = doc.data();
+      businesses.push({
+        id: doc.id,
+        name: data.businessName || '',
+        description: data.description || '',
+        logo: data.logo || '',
+        address: data.address || '',
+        phone: data.phone || '',
+        website: data.website || '',
+        industry: data.industry || '',
+        saved: false
+      });
+    });
+    
+    return businesses;
+  } catch (error) {
+    console.error(`Error fetching businesses by industry ${industry}:`, error);
+    return [];
   }
 };
