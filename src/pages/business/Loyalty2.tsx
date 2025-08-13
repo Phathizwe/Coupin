@@ -13,9 +13,10 @@ import { LoyaltyProgram, LoyaltyReward } from '../../types';
 import DetailedLoyalty from '../../components/loyalty2/DetailedLoyalty';
 import SimpleLoyalty from '../../components/loyalty2/SimpleLoyalty';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
+import { toast } from 'react-toastify';
 
 const Loyalty2: React.FC = () => {
-  const { user } = useAuth();
+  const { user, businessProfile } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const context = useDashboardContext();
@@ -30,29 +31,39 @@ const Loyalty2: React.FC = () => {
   // Fetch loyalty program data
   useEffect(() => {
     const fetchLoyaltyProgram = async () => {
+      // Get the business ID from either the user or the business profile
+      const businessId = user?.businessId || businessProfile?.businessId;
+      
       // Enhanced validation to prevent undefined businessId issues
-      if (!user?.businessId || user.businessId === 'undefined' || user.businessId === 'null') {
-        console.log('Skipping loyalty program fetch - invalid businessId:', user?.businessId);
+      if (!businessId || businessId === 'undefined' || businessId === 'null') {
+        console.log('Skipping loyalty program fetch - invalid businessId:', businessId);
+        setError('Unable to determine your business ID. Please refresh or contact support.');
         setLoading(false);
         return;
       }
 
       try {
         setLoading(true);
-        console.log('Fetching loyalty program for businessId:', user.businessId);
+        console.log('Fetching loyalty program for businessId:', businessId);
 
         // First try to get an existing program
-        let program = await getLoyaltyProgram(user.businessId);
+        let program = await getLoyaltyProgram(businessId);
         console.log('🔍 DEBUG: getLoyaltyProgram returned:', program);
-        console.log('🔍 DEBUG: program is null?', program === null);
-        console.log('🔍 DEBUG: program is undefined?', program === undefined);
-        console.log('🔍 DEBUG: !program evaluates to:', !program);
-
         // If no program exists, initialize one
         if (!program) {
           console.log('No loyalty program found, initializing a new one...');
-          program = await initializeLoyaltyProgram(user.businessId);
-          console.log('🔍 DEBUG: initializeLoyaltyProgram returned:', program);
+          try {
+            program = await initializeLoyaltyProgram(businessId);
+            console.log('🔍 DEBUG: initializeLoyaltyProgram returned:', program);
+            if (!program) {
+              throw new Error('Failed to initialize loyalty program');
+            }
+          } catch (initError) {
+            console.error('Error initializing loyalty program:', initError);
+            setError('Failed to create a loyalty program. Please try again or contact support.');
+        setLoading(false);
+            return;
+      }
         } else {
           console.log('🔍 DEBUG: Found existing program, skipping initialization');
         }
@@ -60,8 +71,14 @@ const Loyalty2: React.FC = () => {
         setLoyaltyProgram(program);
 
         if (program) {
-          const rewards = await getLoyaltyRewards(program.id);
-          setLoyaltyRewards(rewards);
+    try {
+            const rewards = await getLoyaltyRewards(program.id);
+            setLoyaltyRewards(rewards);
+          } catch (rewardsError) {
+            console.warn('Error fetching rewards:', rewardsError);
+            // Continue with empty rewards
+            setLoyaltyRewards([]);
+          }
 
           try {
             // Fetch stats and update achievements
@@ -72,16 +89,16 @@ const Loyalty2: React.FC = () => {
             // Continue anyway since this is not critical
           }
         }
-      } catch (error) {
+    } catch (error) {
         console.error('Error fetching loyalty program:', error);
         setError('Failed to load loyalty program data. Please try again.');
       } finally {
         setLoading(false);
-      }
-    };
+    }
+  };
 
     fetchLoyaltyProgram();
-  }, [user]);
+  }, [user, businessProfile]);
 
   // Handle program creation or update
   const handleProgramSaved = async (updatedProgram: LoyaltyProgram) => {
@@ -98,6 +115,7 @@ const Loyalty2: React.FC = () => {
       // Update local state with the saved program
       setLoyaltyProgram(savedProgram);
       setShowCelebration(true);
+      toast.success('Loyalty program saved successfully!');
 
       // Hide celebration after 3 seconds
       setTimeout(() => {
@@ -106,13 +124,14 @@ const Loyalty2: React.FC = () => {
     } catch (error) {
       console.error('❌ Error saving program:', error);
       setError('Failed to save loyalty program. Please try again.');
+      toast.error('Failed to save loyalty program');
     }
   };
 
   // Handle rewards changes
   const handleRewardsChange = (updatedRewards: LoyaltyReward[]) => {
     setLoyaltyRewards(updatedRewards);
-  };
+};
 
   // Show loading state
   if (loading) {
@@ -140,13 +159,16 @@ const Loyalty2: React.FC = () => {
     );
   }
 
+  // Get the business ID for passing to components
+  const effectiveBusinessId = user?.businessId || businessProfile?.businessId || '';
+
   // Render based on view mode
   if (viewMode === 'simple') {
     return (
       <SimpleLoyalty
         loyaltyProgram={loyaltyProgram}
         loyaltyRewards={loyaltyRewards}
-        businessId={user?.businessId || ''} // Add the missing businessId prop
+        businessId={effectiveBusinessId}
         onProgramSaved={handleProgramSaved}
         onRewardsChange={handleRewardsChange}
         onBackClick={() => navigate('/business/dashboard')}
@@ -159,7 +181,7 @@ const Loyalty2: React.FC = () => {
     <DetailedLoyalty
       loyaltyProgram={loyaltyProgram}
       loyaltyRewards={loyaltyRewards}
-      businessId={user?.businessId || ''} // Pass the businessId to DetailedLoyalty
+      businessId={effectiveBusinessId}
       onProgramSaved={handleProgramSaved}
       onRewardsChange={handleRewardsChange}
       showCelebration={showCelebration}

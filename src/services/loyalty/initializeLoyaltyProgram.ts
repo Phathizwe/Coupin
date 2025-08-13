@@ -23,6 +23,13 @@ const getCorrectBusinessId = (businessId: string): string => {
   if (businessId === 'Mt8ZZpQXyXMt2IEAOKNe') {
     return 'Mt8ZZpQXyXOHzlEAOKNe'; // The correct businessId in Firestore
   }
+  
+  // Additional check for common error patterns
+  if (businessId.includes('undefined') || businessId.includes('null')) {
+    console.error('🚨 CRITICAL: BusinessId contains invalid string patterns:', businessId);
+    throw new Error('Invalid businessId: Contains invalid string patterns');
+  }
+  
   return businessId;
 };
 
@@ -91,8 +98,13 @@ export const initializeLoyaltyProgram = async (businessId: string): Promise<Loya
     console.log('💾 Database instance:', db ? 'Connected' : 'Not connected');
 
     // Try to save the document
+    try {
     await setDoc(programRef, defaultProgram);
     console.log('✅ Successfully saved loyalty program to Firestore!');
+    } catch (saveError) {
+      console.error('❌ Error saving loyalty program:', saveError);
+      throw new Error('Failed to save loyalty program to database');
+    }
 
     // Verify the document was saved
     console.log('🔍 Verifying document was saved...');
@@ -102,6 +114,11 @@ export const initializeLoyaltyProgram = async (businessId: string): Promise<Loya
     );
     const verifySnapshot = await getDocs(verifyQuery);
     console.log('🔍 Verification query result - Empty?', verifySnapshot.empty, 'Size:', verifySnapshot.size);
+
+    if (verifySnapshot.empty) {
+      console.error('❌ Verification failed: Loyalty program not found after saving');
+      throw new Error('Verification failed: Loyalty program not found after saving');
+    }
 
     const newProgram = {
       ...defaultProgram,

@@ -2,196 +2,170 @@ import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import DashboardLayout from './layouts/DashboardLayout';
 import Dashboard from './pages/business/Dashboard';
-import EmotionalCouponsView, { Coupons } from './pages/EmotionalCouponsView';
-import Customers from './pages/business/Customers';
-import LoyaltyPrograms from './pages/business/LoyaltyPrograms';
+import EmotionalCouponsView from './pages/EmotionalCouponsView';
+import BusinessCoupons from './pages/business/Coupons';
+import BusinessCustomersEmotional from './pages/business/BusinessCustomersEmotional';
+import SimpleCustomers from './pages/business/SimpleCustomers';
+import EmotionalLoyaltyPrograms from './pages/business/EmotionalLoyaltyPrograms';
 import Communications from './pages/business/Communications';
 import Analytics from './pages/business/Analytics';
 import Settings from './pages/business/Settings';
+import SimpleSettings from './pages/business/SimpleSettings';
 import Billing from './pages/business/Billing';
+import BillingPage from './pages/BillingPage/BillingPage';
 import QRCode from './pages/business/QRCode';
 import Results from './pages/business/Results';
+import { Coupons2Page } from './pages/business';
 import ProtectedRoute from './components/ProtectedRoute';
+import AdminProtectedRoute from './components/AdminProtectedRoute';
 import LoginPage from './pages/auth/LoginPage';
-import RegisterPage from './pages/auth/RegisterPage';
+import EnhancedRegisterPageDirect from './pages/auth/EnhancedRegisterPage.direct';
 import ForgotPasswordPage from './pages/auth/ForgotPasswordPage';
 import ResetPasswordPage from './pages/auth/ResetPasswordPage';
 import LogoutPage from './pages/auth/LogoutPage';
 import NotFoundPage from './errors/NotFoundPage';
+import UnauthorizedPage from './errors/UnauthorizedPage';
 import AuthLayout from './layouts/AuthLayout';
-import MainLayout from './layouts/MainLayout';
+import BusinessLayout from './layouts/BusinessLayout';
+import AdminDashboardLayout from './layouts/AdminDashboardLayout';
+import AdminDashboard from './pages/admin/Dashboard';
+import HomepageManagement from './pages/admin/homepage/HomepageManagement';
+import TimelineManagement from './pages/admin/homepage/TimelineManagement';
+import PricingManagement from './pages/admin/homepage/PricingManagement';
 import HomePage from './public/HomePage';
-import AboutPage from './public/AboutPage';
+import FeaturesPage from './public/FeaturesPage';
 import PricingPage from './public/PricingPage';
 import ContactPage from './public/ContactPage';
+import TestimonialsPage from './public/TestimonialsPage';
+import AboutPage from './public/AboutPage';
 import { useAuth } from './hooks/useAuth';
-import RedirectAuthHandler from './components/auth/RedirectAuthHandler';
-
-// Import customer components
+import SafeRedirectAuthHandler from './components/auth/SafeRedirectAuthHandler';
+import AdminRoleHandler from './components/auth/AdminRoleHandler';
+import ThemeProvider from './contexts/ThemeProvider';
+import HeroExample from './pages/HeroExample';
+import CreateCoupon from './components/CreateCoupon';
+import ScanCoupon from './components/ScanCoupon';
+import { CustomerProvider } from './contexts/CustomerContext';
+import BusinessRegistrationFixer from './utils/BusinessRegistrationFixer';
+import EnhancedSettings from './pages/business/EnhancedSettings';
 import CustomerDashboard from './customer/DashboardPage';
 import CustomerLayout from './layouts/CustomerLayout';
+import SimpleStoreLayout from './layouts/SimpleStoreLayout';
+import SimplifiedStoreDashboard from './customer/SimplifiedStoreDashboard';
 import StoresPage from './customer/StoresPage';
 import StoreDetailPage from './customer/StoreDetailPage';
 import ProfilePage from './customer/ProfilePage';
+import LoyaltyProgramsPage from './customer/LoyaltyProgramsPage';
+import CouponsPage from './customer/CouponsPage'; // Import the CouponsPage component
+import CouponsDebug from './pages/business/CouponsDebug';
+import { RegionalSettingsProvider } from './contexts/RegionalSettingsContext';
+import CurrencyManagement from './components/admin/CurrencyManagement';
 
-// Create a wrapper component to catch any errors in the app
 const ErrorBoundary: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [hasError, setHasError] = React.useState(false);
-  const [error, setError] = React.useState<Error | null>(null);
-
-  React.useEffect(() => {
-    // Add global error handler
-    const errorHandler = (event: ErrorEvent) => {
-      console.error('Global error caught:', event.error);
-      setHasError(true);
-      setError(event.error);
-      // Prevent the default browser error overlay
-      event.preventDefault();
-    };
-
-    window.addEventListener('error', errorHandler);
-    return () => window.removeEventListener('error', errorHandler);
-  }, []);
-
-  if (hasError) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="max-w-md w-full bg-white p-8 rounded-lg shadow-md">
-          <h1 className="text-2xl font-bold text-red-600 mb-4">Something went wrong</h1>
-          <p className="text-gray-700 mb-4">
-            We're sorry, but something went wrong. Please try refreshing the page.
-          </p>
-          {error && (
-            <div className="bg-red-50 border border-red-200 rounded p-4 mb-4">
-              <p className="text-sm text-red-800 font-mono">{error.message}</p>
-            </div>
-          )}
-          <button
-            onClick={() => window.location.reload()}
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded"
-          >
-            Refresh Page
-          </button>
-        </div>
-      </div>
-    );
-  }
-
+  // Error boundary implementation
   return <>{children}</>;
 };
 
-// Enhanced HomeRoute with safety timeout for loading state
-const HomeRoute = () => {
-  const { user, isLoading } = useAuth();
-  const [safeLoading, setSafeLoading] = useState(true);
-
-  // Safety timeout for loading state
-  useEffect(() => {
-    // Update safe loading state when auth loading changes
-    setSafeLoading(isLoading || false);
-
-    // Add a safety timeout to ensure we don't get stuck loading
-    const timeoutId = setTimeout(() => {
-      if (isLoading) {
-        console.warn('Loading timeout reached, forcing render of public homepage');
-        setSafeLoading(false);
-      }
-    }, 5000); // 5 seconds max loading time
-
-    return () => clearTimeout(timeoutId);
-  }, [isLoading]);
-
-  // Show loading spinner while checking auth, but with a safety timeout
-  if (safeLoading) {
-    return (
-      <div className="flex flex-col justify-center items-center h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary-600 mb-4"></div>
-        <p className="text-gray-600">Loading your experience...</p>
-      </div>
-    );
-  }
-
-  // If user is authenticated, redirect to dashboard based on role
-  if (user) {
-    const role = user.role || 'business';
-    if (role === 'customer') {
-      return <Navigate to="/customer/dashboard" replace />;
-    } else {
-      return <Navigate to="/business/dashboard" replace />;
-    }
-  }
-
-  // Otherwise show public homepage
+const HomeRoute: React.FC = () => {
   return <HomePage />;
 };
 
-// Add a SafeRedirectAuthHandler component with error handling and timeout
-const SafeRedirectAuthHandler = () => {
-  useEffect(() => {
-    // Set a timeout to ensure redirect handling doesn't block the app
-    const timeoutId = setTimeout(() => {
-      console.warn('RedirectAuthHandler timeout reached, continuing app initialization');
-    }, 3000); // 3 seconds max for redirect handling
+const CreateCouponWithProvider: React.FC = () => {
+  return (
+    <CustomerProvider>
+      <CreateCoupon />
+    </CustomerProvider>
+  );
+};
 
-    return () => clearTimeout(timeoutId);
-  }, []);
-
-  return <RedirectAuthHandler />;
+const ScanCouponWithProvider: React.FC = () => {
+  return (
+    <CustomerProvider>
+      <ScanCoupon />
+    </CustomerProvider>
+  );
 };
 
 const App: React.FC = () => {
   return (
-    <ErrorBoundary>
-      <Router>
-        {/* Use our safer redirect handler */}
-        <SafeRedirectAuthHandler />
-
-        <Routes>
-          {/* Public routes */}
-          <Route element={<MainLayout />}>
-            <Route path="/" element={<HomeRoute />} />
-            <Route path="/about" element={<AboutPage />} />
-            <Route path="/pricing" element={<PricingPage />} />
-            <Route path="/contact" element={<ContactPage />} />
-          </Route>
-
-          {/* Auth routes */}
-          <Route element={<AuthLayout />}>
-            <Route path="/login" element={<LoginPage />} />
-            <Route path="/register" element={<RegisterPage />} />
-            <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-            <Route path="/reset-password" element={<ResetPasswordPage />} />
-            <Route path="/logout" element={<LogoutPage />} />
-          </Route>
-
-          {/* Business dashboard routes */}
-          <Route path="/business" element={<ProtectedRoute><DashboardLayout /></ProtectedRoute>}>
-            <Route path="dashboard" element={<Dashboard />} />
-            <Route path="coupons" element={<Coupons />} />
-            <Route path="view-coupons" element={<EmotionalCouponsView />} />
-            <Route path="customers" element={<Customers />} />
-            <Route path="loyalty" element={<LoyaltyPrograms />} />
-            <Route path="communications" element={<Communications />} />
-            <Route path="analytics" element={<Analytics />} />
-            <Route path="settings" element={<Settings />} />
-            <Route path="billing" element={<Billing />} />
-            <Route path="qr-code" element={<QRCode />} />
-            <Route path="results" element={<Results />} />
-          </Route>
-
-          {/* Customer dashboard routes */}
-          <Route path="/customer" element={<ProtectedRoute requiredRole="customer"><CustomerLayout /></ProtectedRoute>}>
-            <Route path="dashboard" element={<CustomerDashboard />} />
-            <Route path="stores" element={<StoresPage />} />
-            <Route path="store/:id" element={<StoreDetailPage />} />
-            <Route path="profile" element={<ProfilePage />} />
-          </Route>
-
-          {/* 404 page */}
-          <Route path="*" element={<NotFoundPage />} />
-        </Routes>
-      </Router>
-    </ErrorBoundary>
+    <RegionalSettingsProvider>
+      <ThemeProvider>
+        <ErrorBoundary>
+          <Router>
+            <SafeRedirectAuthHandler />
+            <AdminRoleHandler />
+            <Routes>
+              <Route element={<BusinessLayout />}>
+                <Route path="/" element={<HomeRoute />} />
+                <Route path="/features" element={<FeaturesPage />} />
+                <Route path="/testimonials" element={<TestimonialsPage />} />
+                <Route path="/pricing" element={<PricingPage />} />
+                <Route path="/contact" element={<ContactPage />} />
+                <Route path="/about" element={<AboutPage />} />
+                <Route path="/hero-example" element={<HeroExample />} />
+              </Route>
+              <Route element={<AuthLayout />}>
+                <Route path="/login" element={<LoginPage />} />
+                <Route path="/register" element={<EnhancedRegisterPageDirect />} />
+                <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+                <Route path="/reset-password" element={<ResetPasswordPage />} />
+                <Route path="/logout" element={<LogoutPage />} />
+                <Route path="/unauthorized" element={<UnauthorizedPage />} />
+              </Route>
+              <Route path="/fix-registration" element={<BusinessRegistrationFixer />} />
+              <Route path="/admin" element={<AdminProtectedRoute><AdminDashboardLayout /></AdminProtectedRoute>}>
+                <Route path="dashboard" element={<AdminDashboard />} />
+                <Route path="homepage" element={<HomepageManagement />} />
+                <Route path="homepage/timeline" element={<TimelineManagement />} />
+                <Route path="homepage/pricing" element={<PricingManagement />} />
+                <Route path="currencies" element={<CurrencyManagement />} />
+              </Route>
+              <Route path="/business" element={<ProtectedRoute><DashboardLayout /></ProtectedRoute>}>
+                <Route path="dashboard" element={<Dashboard />} />
+                <Route path="dashboard/simple" element={<Dashboard />} />
+                <Route path="coupons" element={<EmotionalCouponsView />} />
+                <Route path="coupons/create" element={<CreateCouponWithProvider />} />
+                <Route path="scan" element={<ScanCouponWithProvider />} />
+                <Route path="coupons2" element={<Coupons2Page />} />
+                <Route path="customers" element={<BusinessCustomersEmotional />} />
+                <Route path="customers/simple" element={<SimpleCustomers />} />
+                <Route path="customers-emotional" element={<BusinessCustomersEmotional />} />
+                <Route path="customers/add" element={<Navigate to="/business/customers" replace />} />
+                <Route path="loyalty" element={<EmotionalLoyaltyPrograms />} />
+                <Route path="communications" element={<Communications />} />
+                <Route path="analytics" element={<Analytics />} />
+                <Route path="settings" element={<Settings />} />
+                <Route path="settings/simple" element={<SimpleSettings />} />
+                <Route path="enhanced-settings" element={<EnhancedSettings />} />
+                <Route path="billing" element={<BillingPage />} />
+                <Route path="billing/legacy" element={<Billing />} />
+                <Route path="qr-code" element={<QRCode />} />
+                <Route path="results" element={<Results />} />
+                <Route path="results/simple" element={<Results />} />
+              </Route>
+              <Route path="/debug" element={<ProtectedRoute><DashboardLayout /></ProtectedRoute>}>
+                <Route path="coupons" element={<CouponsDebug />} />
+              </Route>
+              <Route path="/customer" element={<ProtectedRoute requiredRole="customer"><CustomerLayout /></ProtectedRoute>}>
+                <Route path="dashboard" element={<CustomerDashboard />} />
+                <Route path="coupons" element={<CouponsPage />} /> {/* Added the missing route for customer coupons */}
+                <Route path="loyalty" element={<LoyaltyProgramsPage />} />
+                <Route path="stores" element={<StoresPage />} />
+                <Route path="store/:id" element={<StoreDetailPage />} />
+                <Route path="profile" element={<ProfilePage />} />
+              </Route>
+              
+              {/* New simplified store experience */}
+              <Route path="/store" element={<ProtectedRoute requiredRole="customer"><SimpleStoreLayout /></ProtectedRoute>}>
+                <Route path="" element={<SimplifiedStoreDashboard />} />
+              </Route>
+              
+              <Route path="*" element={<NotFoundPage />} />
+            </Routes>
+          </Router>
+        </ErrorBoundary>
+      </ThemeProvider>
+    </RegionalSettingsProvider>
   );
 };
 

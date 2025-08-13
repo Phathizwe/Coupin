@@ -10,12 +10,24 @@ service cloud.firestore {
       return isAuthenticated() && request.auth.uid == userId;
     }
     
+    // Updated: support array-based businesses and currentBusinessId
     function hasBusinessAccess(businessId) {
-      return isAuthenticated() && 
-        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.businesses[businessId] == true ||
-         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.businessId == businessId);
+      return isAuthenticated() && (
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.businessId == businessId ||
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.currentBusinessId == businessId ||
+        (
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.businesses != null &&
+          businessId in get(/databases/$(database)/documents/users/$(request.auth.uid)).data.businesses
+        )
+      );
     }
-    
+
+    // Resolve customer ownership via customers -> userId link
+    function isCustomerOwnedByRequester(customerId) {
+      return isAuthenticated() &&
+        get(/databases/$(database)/documents/customers/$(customerId)).data.userId == request.auth.uid;
+    }
+
     function isBusinessCustomer(businessId, customerId) {
       return get(/databases/$(database)/documents/customers/$(customerId)).data.businessId == businessId;
     }
@@ -54,17 +66,53 @@ service cloud.firestore {
       allow delete: if isAuthenticated() && hasBusinessAccess(resource.data.businessId);
     }
     
-    // Customer Programs collection (new)
-    match /customerPrograms/{enrollmentId} {
-      allow read: if isAuthenticated() && 
-        (isOwner(resource.data.customerId) || hasBusinessAccess(resource.data.businessId));
-      allow create: if isAuthenticated() && 
-        (isOwner(request.resource.data.customerId) || hasBusinessAccess(request.resource.data.businessId));
-      allow update: if isAuthenticated() && 
-        (isOwner(resource.data.customerId) || hasBusinessAccess(resource.data.businessId));
+    // Loyalty Achievements collection
+    match /loyaltyAchievements/{achievementId} {
+      allow read: if true; // Allow public read for discovery
+      allow create: if isAuthenticated() && hasBusinessAccess(request.resource.data.businessId);
+      allow update: if isAuthenticated() && hasBusinessAccess(resource.data.businessId);
       allow delete: if isAuthenticated() && hasBusinessAccess(resource.data.businessId);
     }
     
+    // Loyalty Members collection - ADDED THIS SECTION
+    match /loyaltyMembers/{memberId} {
+      allow read: if true; // Allow public read for discovery
+      allow create: if isAuthenticated() && hasBusinessAccess(request.resource.data.businessId);
+      allow update: if isAuthenticated() && hasBusinessAccess(resource.data.businessId);
+      allow delete: if isAuthenticated() && hasBusinessAccess(resource.data.businessId);
+    }
+    
+    // Loyalty Rewards collection - ADDED THIS SECTION
+    match /loyaltyRewards/{rewardId} {
+      allow read: if true; // Allow public read for discovery
+      allow create: if isAuthenticated() && hasBusinessAccess(request.resource.data.businessId);
+      allow update: if isAuthenticated() && hasBusinessAccess(resource.data.businessId);
+      allow delete: if isAuthenticated() && hasBusinessAccess(resource.data.businessId);
+    }
+    
+    // Customer Programs collection
+    match /customerPrograms/{enrollmentId} {
+      allow read: if isAuthenticated() && (
+        // allow if enrollment explicitly stores userId matching requester
+        (resource.data.userId != null && resource.data.userId == request.auth.uid) ||
+        // allow if linked customer belongs to requester
+        (resource.data.customerId != null && isCustomerOwnedByRequester(resource.data.customerId)) ||
+        // allow business access
+        hasBusinessAccess(resource.data.businessId)
+      );
+      allow create: if isAuthenticated() && (
+        (request.resource.data.userId != null && request.resource.data.userId == request.auth.uid) ||
+        (request.resource.data.customerId != null && isCustomerOwnedByRequester(request.resource.data.customerId)) ||
+        hasBusinessAccess(request.resource.data.businessId)
+      );
+      allow update: if isAuthenticated() && (
+        (resource.data.userId != null && resource.data.userId == request.auth.uid) ||
+        (resource.data.customerId != null && isCustomerOwnedByRequester(resource.data.customerId)) ||
+        hasBusinessAccess(resource.data.businessId)
+      );
+      allow delete: if isAuthenticated() && hasBusinessAccess(resource.data.businessId);
+    }
+
     // Coupons collection
     match /coupons/{couponId} {
       allow read: if true; // Allow public read for discovery
@@ -72,25 +120,43 @@ service cloud.firestore {
       allow update: if isAuthenticated() && hasBusinessAccess(resource.data.businessId);
       allow delete: if isAuthenticated() && hasBusinessAccess(resource.data.businessId);
     }
-    
+
     // Coupon Distributions collection
     match /couponDistributions/{distributionId} {
-      allow read: if isAuthenticated() && 
-        (isOwner(resource.data.customerId) || hasBusinessAccess(resource.data.businessId));
-      allow create: if isAuthenticated() && hasBusinessAccess(request.resource.data.businessId);
-      allow update: if isAuthenticated() && hasBusinessAccess(resource.data.businessId);
+      allow read: if isAuthenticated() && (
+        (resource.data.userId != null && resource.data.userId == request.auth.uid) ||
+        (resource.data.customerId != null && isCustomerOwnedByRequester(resource.data.customerId)) ||
+        hasBusinessAccess(resource.data.businessId)
+      );
+      allow create: if isAuthenticated() && (
+        (request.resource.data.userId != null && request.resource.data.userId == request.auth.uid) ||
+        hasBusinessAccess(request.resource.data.businessId)
+      );
+      allow update: if isAuthenticated() && (
+        (resource.data.userId != null && resource.data.userId == request.auth.uid) ||
+        hasBusinessAccess(resource.data.businessId)
+      );
       allow delete: if isAuthenticated() && hasBusinessAccess(resource.data.businessId);
     }
-    
+
     // Customer Coupons collection
     match /customerCoupons/{customerCouponId} {
-      allow read: if isAuthenticated() && 
-        (isOwner(resource.data.customerId) || hasBusinessAccess(resource.data.businessId));
+      allow read: if isAuthenticated() && (
+        (resource.data.userId != null && resource.data.userId == request.auth.uid) ||
+        (resource.data.customerId != null && isCustomerOwnedByRequester(resource.data.customerId)) ||
+        hasBusinessAccess(resource.data.businessId)
+      );
       allow create: if isAuthenticated();
-      allow update: if isAuthenticated() && 
-        (isOwner(resource.data.customerId) || hasBusinessAccess(resource.data.businessId));
-      allow delete: if isAuthenticated() && 
-        (isOwner(resource.data.customerId) || hasBusinessAccess(resource.data.businessId));
+      allow update: if isAuthenticated() && (
+        (resource.data.userId != null && resource.data.userId == request.auth.uid) ||
+        (resource.data.customerId != null && isCustomerOwnedByRequester(resource.data.customerId)) ||
+        hasBusinessAccess(resource.data.businessId)
+      );
+      allow delete: if isAuthenticated() && (
+        (resource.data.userId != null && resource.data.userId == request.auth.uid) ||
+        (resource.data.customerId != null && isCustomerOwnedByRequester(resource.data.customerId)) ||
+        hasBusinessAccess(resource.data.businessId)
+      );
     }
   }
 }

@@ -1,22 +1,22 @@
 const { execSync } = require('child_process');
-const fs = require('fs');
-const path = require('path');
 
-console.log('Deploying optimized Firestore indexes for loyalty program...');
-
+console.log('Deploying Firestore security rules...');
 try {
-  // Ensure we're using the latest indexes file
-  console.log('Using indexes from firestore.indexes.json');
-  
-  // Deploy the indexes
-  console.log('Deploying indexes to Firebase...');
-  const output = execSync('firebase deploy --only firestore:indexes', { encoding: 'utf8' });
-  
-  console.log('Deployment output:');
-  console.log(output);
-  
-  console.log('Indexes deployed successfully!');
+  execSync('firebase deploy --only firestore:rules', { stdio: 'inherit' });
+  console.log('✅ Firestore rules deployed successfully!');
 } catch (error) {
-  console.error('Error deploying indexes:', error.message);
+  console.error('❌ Error deploying Firestore rules:', error.message);
   process.exit(1);
 }
+
+console.log('\nDeploying Firestore indexes...');
+try {
+  execSync('firebase deploy --only firestore:indexes', { stdio: 'inherit' });
+  console.log('✅ Firestore indexes deployed successfully!');
+} catch (error) {
+  console.error('❌ Error deploying Firestore indexes:', error.message);
+  process.exit(1);
+}
+
+console.log('\n✅ All Firestore configurations deployed successfully!');
+console.log('The loyalty program should now work correctly with proper permissions.');

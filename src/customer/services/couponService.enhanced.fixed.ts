@@ -4,7 +4,7 @@ import {
 } from 'firebase/firestore';
 import { Coupon } from '../types/coupon.enhanced';
 import { findCustomerByUserId } from '../../services/customerLinkingService';
-import { fetchCouponIds } from './couponFetchService';
+import { fetchCouponIds } from './couponFetchService.fixed';
 import { fetchCouponDetails } from './couponDetailsService.enhanced';
 
 export enum CouponAnalyticsEvent {

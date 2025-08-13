@@ -59,6 +59,7 @@ import LoyaltyProgramsPage from './customer/LoyaltyProgramsPage';
 import CouponsDebug from './pages/business/CouponsDebug';
 import { RegionalSettingsProvider } from './contexts/RegionalSettingsContext';
 import CurrencyManagement from './components/admin/CurrencyManagement';
+import CouponsPage from './customer/CouponsPage';
 
 const ErrorBoundary: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Error boundary implementation
@@ -147,6 +148,7 @@ const App: React.FC = () => {
               </Route>
               <Route path="/customer" element={<ProtectedRoute requiredRole="customer"><CustomerLayout /></ProtectedRoute>}>
                 <Route path="dashboard" element={<CustomerDashboard />} />
+                <Route path="coupons" element={<CouponsPage />} />
                 <Route path="loyalty" element={<LoyaltyProgramsPage />} />
                 <Route path="stores" element={<StoresPage />} />
                 <Route path="store/:id" element={<StoreDetailPage />} />
