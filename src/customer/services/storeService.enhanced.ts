@@ -1,63 +1,11 @@
-import { collection, query, where, getDocs, DocumentData, QueryDocumentSnapshot, getDoc, doc, limit, orderBy, startAfter } from 'firebase/firestore';
+import { collection, query, where, getDocs, DocumentData, QueryDocumentSnapshot, getDoc, doc, limit, orderBy } from 'firebase/firestore';
 import { db } from '../../config/firebase';
 import { Business } from '../types/store';
-import { findCustomerByUserId } from '../../services/customerLinkingService';
-import { getBusinessIdsFromCollections } from './storeServiceHelpers';
-import { fetchBusinessDetails } from './businessService';
+import { findCustomerByUserId, findCustomerByPhone } from '../../services/customerLinkingService';
+import { getBusinessIdsFromCollections } from './storeServiceHelpers.enhanced';
+import { fetchBusinessDetails, searchBusinessesByName } from './businessService.enhanced';
 
 const STORES_PER_PAGE = 12;
-
-/**
- * Search for businesses by name
- * @param searchTerm The search term to look for in business names
- * @returns Array of matching businesses
- */
-export const searchBusinesses = async (searchTerm: string): Promise<Business[]> => {
-  try {
-    if (!searchTerm || searchTerm.trim().length < 2) {
-      return [];
-    }
-
-    const normalizedSearchTerm = searchTerm.trim().toLowerCase();
-    
-    // Query businesses collection for matching names
-    const businessesRef = collection(db, 'businesses');
-    
-    // Firebase doesn't support case-insensitive search directly,
-    // so we use a range query with a lowercase field
-    const q = query(
-      businessesRef,
-      where('businessNameLower', '>=', normalizedSearchTerm),
-      where('businessNameLower', '<=', normalizedSearchTerm + '\uf8ff'),
-      limit(20)
-    );
-    
-    const snapshot = await getDocs(q);
-    
-    // Transform results into Business objects
-    const businesses: Business[] = [];
-    
-    snapshot.forEach(doc => {
-      const data = doc.data();
-      businesses.push({
-        id: doc.id,
-        name: data.businessName || '',
-        description: data.description || '',
-        logo: data.logo || '',
-        address: data.address || '',
-        phone: data.phone || '',
-        website: data.website || '',
-        industry: data.industry || '',
-        saved: false // Will be updated later
-      });
-    });
-    
-    return businesses;
-  } catch (error) {
-    console.error('Error searching businesses:', error);
-    throw error;
-  }
-};
 
 /**
  * Fetches initial set of stores for a user
@@ -106,93 +54,51 @@ export const fetchInitialStores = async (userId: string): Promise<{
 };
 
 /**
- * Fetches popular or featured businesses
+ * Searches for stores by name
+ * @param searchTerm The search term to use
+ * @returns Array of matching businesses
+ */
+export const searchStores = async (searchTerm: string): Promise<Business[]> => {
+  try {
+    console.log(`Searching for stores with term: "${searchTerm}"`);
+    return await searchBusinessesByName(searchTerm);
+  } catch (error) {
+    console.error('Error searching stores:', error);
+    return [];
+  }
+};
+
+/**
+ * Fetches popular businesses
+ * @param limit Optional limit on number of businesses to return
  * @returns Array of popular businesses
  */
-export const fetchPopularBusinesses = async (): Promise<Business[]> => {
+export const fetchPopularBusinesses = async (limitCount: number = 10): Promise<Business[]> => {
   try {
-    // First try to fetch featured businesses
+    console.log('Fetching popular businesses');
     const businessesRef = collection(db, 'businesses');
-    const featuredQuery = query(
+    const businessesQuery = query(
       businessesRef,
-      where('featured', '==', true),
-      limit(10)
+      where('active', '==', true),
+      orderBy('popularityScore', 'desc'),
+      limit(limitCount)
     );
+    const businessesSnapshot = await getDocs(businessesQuery);
     
-    const featuredSnapshot = await getDocs(featuredQuery);
-    
-    // If we don't have enough featured businesses, find businesses with loyalty programs
-    if (featuredSnapshot.size < 5) {
-      // Find businesses that have loyalty programs
-      const programsRef = collection(db, 'loyaltyPrograms');
-      const programsQuery = query(
-        programsRef,
-        where('active', '==', true),
-        limit(20)
-      );
-      
-      const programsSnapshot = await getDocs(programsQuery);
-      
-      // Get unique business IDs
-      const businessIds = new Set<string>();
-      programsSnapshot.forEach(doc => {
-        const businessId = doc.data().businessId;
-        if (businessId) {
-          businessIds.add(businessId);
-        }
-      });
-      
-      // Fetch details for these businesses
-      const businesses: Business[] = [];
-      
-      // Convert Set to Array to avoid iteration issues
-      const businessIdArray = Array.from(businessIds);
-      
-      for (const businessId of businessIdArray) {
-        const businessDoc = await getDoc(doc(db, 'businesses', businessId));
-        
-        if (businessDoc.exists()) {
-          const data = businessDoc.data();
-          businesses.push({
-            id: businessDoc.id,
-            name: data.businessName || '',
-            description: data.description || '',
-            logo: data.logo || '',
-            address: data.address || '',
-            phone: data.phone || '',
-            website: data.website || '',
-            industry: data.industry || '',
-            hasLoyaltyProgram: true,
-            saved: false
-          });
-        }
-        
-        // Limit to 10 businesses
-        if (businesses.length >= 10) {
-          break;
-        }
-      }
-      
-      return businesses;
-    }
-    
-    // Transform featured businesses into Business objects
     const businesses: Business[] = [];
-    
-    featuredSnapshot.forEach(doc => {
-      const data = doc.data();
+    for (const doc of businessesSnapshot.docs) {
+      const businessData = doc.data();
       businesses.push({
         id: doc.id,
-        name: data.businessName || '',
-        description: data.description || '',
-        logo: data.logo || '',
-        address: data.address || '',
-        phone: data.phone || '',
-        website: data.website || '',
-        industry: data.industry || '',
-        saved: false
+        businessName: businessData.businessName || 'Unknown Business',
+        industry: businessData.industry || 'Not specified',
+        logo: businessData.logo || undefined,
+        description: businessData.description || '',
+        address: businessData.address || '',
+        couponCount: businessData.couponCount || 0,
+        colors: businessData.colors || { primary: '#3B82F6', secondary: '#10B981' }
       });
-    });
+    }
     
     return businesses;
   } catch (error) {
@@ -202,89 +108,56 @@ export const fetchPopularBusinesses = async (): Promise<Business[]> => {
 };
 
 /**
- * Gets all loyalty programs for a business
- * @param businessId The business ID
- * @returns Array of loyalty programs
- */
-export const getBusinessPrograms = async (businessId: string) => {
-  try {
-    const programsRef = collection(db, 'loyaltyPrograms');
-    const q = query(
-      programsRef,
-      where('businessId', '==', businessId),
-      where('active', '==', true)
-    );
-    
-    const snapshot = await getDocs(q);
-    
-    return snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    }));
-  } catch (error) {
-    console.error('Error getting business programs:', error);
-    throw error;
-  }
-};
-
-/**
  * Fetches businesses with loyalty programs
- * @param limit Number of businesses to fetch
+ * @param limitCount Optional limit on number of businesses to return
  * @returns Array of businesses with loyalty programs
  */
-export const fetchBusinessesWithLoyaltyPrograms = async (limitCount = 10): Promise<Business[]> => {
+export const fetchBusinessesWithLoyaltyPrograms = async (limitCount: number = 10): Promise<Business[]> => {
   try {
-    // Find businesses that have loyalty programs
+    console.log('Fetching businesses with loyalty programs');
+    
+    // First get all loyalty programs
     const programsRef = collection(db, 'loyaltyPrograms');
     const programsQuery = query(
       programsRef,
       where('active', '==', true),
-      limit(limitCount * 2) // Fetch more to account for duplicates
+      limit(limitCount * 2) // Get more than we need to account for duplicates
     );
-    
     const programsSnapshot = await getDocs(programsQuery);
     
-    // Get unique business IDs
-    const businessIds = new Set<string>();
+    // Extract unique business IDs
+    const businessIdSet = new Set<string>();
     programsSnapshot.forEach(doc => {
-      const businessId = doc.data().businessId;
-      if (businessId) {
-        businessIds.add(businessId);
+      const data = doc.data();
+      if (data.businessId) {
+        businessIdSet.add(data.businessId);
       }
     });
     
-    // Fetch details for these businesses
+    // Convert Set to Array for compatibility
+    const businessIds = Array.from(businessIdSet);
+    
+    // Fetch business details for each ID
     const businesses: Business[] = [];
-    
-    // Convert Set to Array to avoid iteration issues
-    const businessIdArray = Array.from(businessIds);
-    
-    for (const businessId of businessIdArray) {
+    for (const businessId of businessIds) {
       const businessDoc = await getDoc(doc(db, 'businesses', businessId));
-      
       if (businessDoc.exists()) {
-        const data = businessDoc.data();
+        const businessData = businessDoc.data();
         businesses.push({
-          id: businessDoc.id,
-          name: data.businessName || '',
-          description: data.description || '',
-          logo: data.logo || '',
-          address: data.address || '',
-          phone: data.phone || '',
-          website: data.website || '',
-          industry: data.industry || '',
-          hasLoyaltyProgram: true,
-          saved: false
+          id: businessId,
+          businessName: businessData.businessName || 'Unknown Business',
+          industry: businessData.industry || 'Not specified',
+          logo: businessData.logo || undefined,
+          description: businessData.description || '',
+          address: businessData.address || '',
+          couponCount: businessData.couponCount || 0,
+          colors: businessData.colors || { primary: '#3B82F6', secondary: '#10B981' }
         });
-      }
-      
-      // Limit to requested number of businesses
-      if (businesses.length >= limitCount) {
-        break;
       }
     }
     
-    return businesses;
+    // Limit the number of businesses returned
+    return businesses.slice(0, limitCount);
   } catch (error) {
     console.error('Error fetching businesses with loyalty programs:', error);
     return [];
@@ -294,41 +167,178 @@ export const fetchBusinessesWithLoyaltyPrograms = async (limitCount = 10): Promi
 /**
  * Fetches businesses by industry
  * @param industry The industry to filter by
- * @param limitCount Number of businesses to fetch
+ * @param limitCount Optional limit on number of businesses to return
  * @returns Array of businesses in the specified industry
  */
-export const fetchBusinessesByIndustry = async (industry: string, limitCount = 10): Promise<Business[]> => {
+export const fetchBusinessesByIndustry = async (industry: string, limitCount: number = 10): Promise<Business[]> => {
   try {
+    console.log(`Fetching businesses in industry: ${industry}`);
     const businessesRef = collection(db, 'businesses');
-    const q = query(
+    const businessesQuery = query(
       businessesRef,
+      where('active', '==', true),
       where('industry', '==', industry),
       limit(limitCount)
     );
+    const businessesSnapshot = await getDocs(businessesQuery);
     
-    const snapshot = await getDocs(q);
-    
-    // Transform results into Business objects
     const businesses: Business[] = [];
-    
-    snapshot.forEach(doc => {
-      const data = doc.data();
+    for (const doc of businessesSnapshot.docs) {
+      const businessData = doc.data();
       businesses.push({
         id: doc.id,
-        name: data.businessName || '',
-        description: data.description || '',
-        logo: data.logo || '',
-        address: data.address || '',
-        phone: data.phone || '',
-        website: data.website || '',
-        industry: data.industry || '',
-        saved: false
+        businessName: businessData.businessName || 'Unknown Business',
+        industry: businessData.industry || 'Not specified',
+        logo: businessData.logo || undefined,
+        description: businessData.description || '',
+        address: businessData.address || '',
+        couponCount: businessData.couponCount || 0,
+        colors: businessData.colors || { primary: '#3B82F6', secondary: '#10B981' }
       });
-    });
+    }
     
     return businesses;
   } catch (error) {
-    console.error(`Error fetching businesses by industry ${industry}:`, error);
+    console.error(`Error fetching businesses in industry ${industry}:`, error);
     return [];
+  }
+};
+
+/**
+ * Searches for businesses
+ * @param searchTerm The search term to use
+ * @returns Array of matching businesses
+ */
+export const searchBusinesses = async (searchTerm: string): Promise<Business[]> => {
+  return searchBusinessesByName(searchTerm);
+};
+
+/**
+ * Gets loyalty programs for a business
+ * @param businessId The business ID to get programs for
+ * @returns Array of loyalty programs
+ */
+export const getBusinessPrograms = async (businessId: string): Promise<any[]> => {
+  try {
+    console.log(`Fetching loyalty programs for business: ${businessId}`);
+    const programsRef = collection(db, 'loyaltyPrograms');
+    const programsQuery = query(
+      programsRef,
+      where('businessId', '==', businessId),
+      where('active', '==', true)
+    );
+    const programsSnapshot = await getDocs(programsQuery);
+    
+    const programs: any[] = [];
+    programsSnapshot.forEach(doc => {
+      programs.push({
+        id: doc.id,
+        ...doc.data()
+      });
+    });
+    
+    return programs;
+  } catch (error) {
+    console.error('Error fetching business programs:', error);
+    return [];
+  }
+};
+
+/**
+ * Checks if a store is saved by a user
+ * @param userId The user ID to check
+ * @param businessId The business ID to check
+ * @returns Boolean indicating whether the store is saved
+ */
+export const isStoreSaved = async (userId: string, businessId: string): Promise<boolean> => {
+  try {
+    // First, check if the user is linked to a customer profile
+    const linkedCustomer = await findCustomerByUserId(userId);
+    const customerId = linkedCustomer?.id;
+    const customerPhone = linkedCustomer?.phone;
+    
+    // If we have both IDs, we'll search using both
+    const idsToSearch = [userId];
+    if (customerId) {
+      idsToSearch.push(customerId);
+    }
+    
+    // Check in couponDistributions
+    for (const id of idsToSearch) {
+      const distributionsRef = collection(db, 'couponDistributions');
+      const distributionsQuery = query(
+        distributionsRef,
+        where('customerId', '==', id),
+        where('businessId', '==', businessId)
+      );
+      const distributionsSnapshot = await getDocs(distributionsQuery);
+      
+      if (!distributionsSnapshot.empty) {
+        return true;
+      }
+    }
+    
+    // Check in customerCoupons for customerId
+    for (const id of idsToSearch) {
+      const customerCouponsRef = collection(db, 'customerCoupons');
+      const customerCouponsQuery = query(
+        customerCouponsRef,
+        where('customerId', '==', id),
+        where('businessId', '==', businessId)
+      );
+      const customerCouponsSnapshot = await getDocs(customerCouponsQuery);
+      
+      if (!customerCouponsSnapshot.empty) {
+        return true;
+      }
+    }
+    
+    // Check in customerCoupons for userId
+    for (const id of idsToSearch) {
+      const customerCouponsRef = collection(db, 'customerCoupons');
+      const customerCouponsQuery = query(
+        customerCouponsRef,
+        where('userId', '==', id),
+        where('businessId', '==', businessId)
+      );
+      const customerCouponsSnapshot = await getDocs(customerCouponsQuery);
+      
+      if (!customerCouponsSnapshot.empty) {
+        return true;
+      }
+    }
+    
+    // Check for phone-based coupon distributions if we have a phone number
+    if (customerPhone) {
+      // Find all customers with this phone number (there might be duplicates)
+      const customersRef = collection(db, 'customers');
+      const phoneQuery = query(
+        customersRef,
+        where('phone', '==', customerPhone)
+      );
+      const phoneCustomersSnapshot = await getDocs(phoneQuery);
+      
+      // Check coupon distributions for each customer with this phone
+      for (const customerDoc of phoneCustomersSnapshot.docs) {
+        const phoneCustomerId = customerDoc.id;
+        
+        const distributionsRef = collection(db, 'couponDistributions');
+        const distributionsQuery = query(
+          distributionsRef,
+          where('customerId', '==', phoneCustomerId),
+          where('businessId', '==', businessId)
+        );
+        const distributionsSnapshot = await getDocs(distributionsQuery);
+        
+        if (!distributionsSnapshot.empty) {
+          return true;
+        }
+      }
+    }
+    
+    return false;
+  } catch (error) {
+    console.error('Error checking if store is saved:', error);
+    return false;
   }
 };

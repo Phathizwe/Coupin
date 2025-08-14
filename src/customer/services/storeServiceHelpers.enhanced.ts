@@ -1,4 +1,4 @@
-import { collection, query, where, getDocs, or } from 'firebase/firestore';
+import { collection, query, where, getDocs, limit, orderBy, startAfter } from 'firebase/firestore';
 import { db } from '../../config/firebase';
 
 /**
@@ -13,7 +13,10 @@ export const getBusinessIdsFromCollections = async (
 ): Promise<Set<string>> => {
   const businessIds = new Set<string>();
   
-  // Check couponDistributions collection
+  // First, get all active businesses
+  await getAllActiveBusinessIds(businessIds);
+  
+  // Then check couponDistributions collection
   await getBusinessIdsFromDistributions(idsToSearch, businessIds);
   
   // Check customerCoupons collection
@@ -28,6 +31,36 @@ export const getBusinessIdsFromCollections = async (
   }
   
   return businessIds;
+};
+
+/**
+ * Gets all active business IDs
+ * This is crucial for store discovery - we want to show all businesses
+ * @param businessIds Set to add business IDs to
+ */
+const getAllActiveBusinessIds = async (
+  businessIds: Set<string>
+): Promise<void> => {
+  try {
+    console.log('Fetching all active businesses');
+    
+    const businessesRef = collection(db, 'businesses');
+    const businessesQuery = query(
+      businessesRef,
+      where('active', '==', true),
+      limit(50) // Limit to 50 businesses for performance
+    );
+    const businessesSnapshot = await getDocs(businessesQuery);
+    
+    console.log(`Found ${businessesSnapshot.size} active businesses`);
+    
+    // Extract business IDs
+    businessesSnapshot.forEach(doc => {
+      businessIds.add(doc.id);
+    });
+  } catch (error) {
+    console.error('Error fetching active businesses:', error);
+  }
 };
 
 /**
