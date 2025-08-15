@@ -1,7 +1,21 @@
-// src/scripts/migratePhoneNumbers.ts
-import { collection, getDocs, doc, updateDoc } from 'firebase/firestore';
-import { db } from '../firebase/config';
-import { QueryOptimizer } from '../services/firestore/optimizers/queryOptimizer';
+import { initializeApp } from 'firebase/app';
+import { getFirestore, collection, getDocs, doc, updateDoc } from 'firebase/firestore';
+import { normalizePhoneNumber } from '../utils/phoneUtils';
+
+// Firebase configuration
+const firebaseConfig = {
+  apiKey: "AIzaSyB_px307ityLaMaEG-TqT-Ssz3CT-AhJ6Y",
+  authDomain: "coupin-f35d2.firebaseapp.com",
+  projectId: "coupin-f35d2",
+  storageBucket: "coupin-f35d2.appspot.com",
+  messagingSenderId: "757183919417",
+  appId: "1:757183919417:web:6c0146510173250129a4e8",
+  measurementId: "G-R0XYKGNZ9C"
+};
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
 
 /**
  * Migration script to add normalized phone fields to existing customer records
@@ -9,53 +23,65 @@ import { QueryOptimizer } from '../services/firestore/optimizers/queryOptimizer'
 export async function migrateCustomerPhoneNumbers() {
   console.log('Starting phone number migration...');
   const customersRef = collection(db, 'customers');
-  const snapshot = await getDocs(customersRef);
   
-  let updated = 0;
-  let skipped = 0;
-  let failed = 0;
-  
-  for (const customerDoc of snapshot.docs) {
-    const customerData = customerDoc.data();
+  try {
+    const snapshot = await getDocs(customersRef);
+    console.log(`Found ${snapshot.docs.length} customer records to process`);
     
-    // Skip if no phone number or already has normalized field
-    if (!customerData.phone || customerData.phone_normalized) {
-      skipped++;
-      continue;
-    }
+    let updated = 0;
+    let skipped = 0;
+    let failed = 0;
     
-    try {
-      // Add normalized phone field
-      const normalizedPhone = QueryOptimizer.normalizePhoneNumber(customerData.phone);
-      await updateDoc(doc(db, 'customers', customerDoc.id), {
-        phone_normalized: normalizedPhone
-      });
-      updated++;
+    for (const customerDoc of snapshot.docs) {
+      const customerData = customerDoc.data();
       
-      // Log progress every 10 documents
-      if (updated % 10 === 0) {
-        console.log(`Progress: ${updated} customers updated`);
+      // Skip if no phone number or already has normalized field
+      if (!customerData.phone || customerData.phone_normalized) {
+        skipped++;
+        continue;
       }
-    } catch (error) {
-      console.error(`Failed to update customer ${customerDoc.id}:`, error);
-      failed++;
+      
+      try {
+        // Add normalized phone field
+        const normalizedPhone = normalizePhoneNumber(customerData.phone);
+        console.log(`Normalizing phone: ${customerData.phone} -> ${normalizedPhone}`);
+        
+        await updateDoc(doc(db, 'customers', customerDoc.id), {
+          phone_normalized: normalizedPhone
+        });
+        updated++;
+        
+        // Log progress every 10 documents
+        if (updated % 10 === 0) {
+          console.log(`Progress: ${updated} customers updated`);
+        }
+      } catch (error) {
+        console.error(`Failed to update customer ${customerDoc.id}:`, error);
+        failed++;
+      }
     }
+    
+    console.log(`
+      Migration complete:
+      - ${updated} customers updated
+      - ${skipped} customers skipped (no phone or already normalized)
+      - ${failed} updates failed
+    `);
+    
+    return { updated, skipped, failed };
+  } catch (error) {
+    console.error('Error fetching customers:', error);
+    throw error;
   }
-  
-  console.log(`
-    Migration complete:
-    - ${updated} customers updated
-    - ${skipped} customers skipped (no phone or already normalized)
-    - ${failed} updates failed
-  `);
-  
-  return { updated, skipped, failed };
 }
 
-// Run migration if this file is executed directly
+// Run the migration if this file is executed directly
 if (require.main === module) {
   migrateCustomerPhoneNumbers()
-    .then(() => process.exit(0))
+    .then(() => {
+      console.log('Migration completed successfully');
+      setTimeout(() => process.exit(0), 3000); // Give time for Firebase operations to complete
+    })
     .catch(error => {
       console.error('Migration failed:', error);
       process.exit(1);

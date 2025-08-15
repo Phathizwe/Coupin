@@ -7,7 +7,7 @@ import RegisterForm from '../../components/auth/RegisterForm';
 import SocialSignInButtons from '../../components/auth/SocialSignInButtons';
 import { registerValidationSchema } from '../../utils/validationSchemas';
 import { handleRegistration, handleSocialSignIn } from '../../utils/authHelpers';
-import { db } from '../../firebase/config';
+import { db } from '../../config/firebase';
 import { collection, query, where, getDocs, updateDoc, doc } from 'firebase/firestore';
 import { diagnoseBusiness } from '../../utils/registrationDiagnostics'; // Import the diagnostics function
 

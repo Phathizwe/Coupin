@@ -1,5 +1,5 @@
 import { collection, query, where, getDocs, orderBy, limit } from 'firebase/firestore';
-import { db } from '../../firebase/config';
+import { db } from '../../config/firebase';
 
 export interface BusinessSearchResult {
   id: string;
@@ -68,7 +68,7 @@ export class StoreDiscoveryService {
       const programsQuery = query(
         programsRef,
         where('businessId', '==', businessId),
-        where('isActive', '==', true)
+        where('active', '==', true)
       );
       const programsSnapshot = await getDocs(programsQuery);
       return programsSnapshot.docs.map(doc => ({
@@ -76,7 +76,7 @@ export class StoreDiscoveryService {
         name: doc.data().name,
         description: doc.data().description,
         type: doc.data().type,
-        isActive: doc.data().isActive
+        isActive: doc.data().active
       }));
     } catch (error) {
       console.error('Error fetching loyalty programs:', error);

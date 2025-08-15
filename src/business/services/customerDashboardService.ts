@@ -1,5 +1,5 @@
 import { collection, query, where, getDocs, orderBy, limit, doc, updateDoc, increment } from 'firebase/firestore';
-import { db } from '../../firebase/config';
+import { db } from '../../config/firebase';
 
 export interface BusinessCustomerSummary {
   id: string;
@@ -100,7 +100,7 @@ export class CustomerDashboardService {
         customer.lifetimeValue += programSummary.totalSpent;
 
         // Update last visit if this program has a more recent visit
-        if (programSummary.lastActivity && 
+        if (programSummary.lastActivity &&
             (!customer.lastVisit || programSummary.lastActivity > customer.lastVisit)) {
           customer.lastVisit = programSummary.lastActivity;
         }
@@ -123,58 +123,109 @@ export class CustomerDashboardService {
   }
 
   /**
-   * Get customer statistics for business dashboard
+   * Get customer statistics for a business
+   */
+  /**
+   * Get aggregate customer stats for a business
    */
   async getCustomerStats(businessId: string): Promise<CustomerStats> {
     try {
-      const customers = await this.getBusinessCustomers(businessId);
+      const customerProgramsRef = collection(db, 'customerPrograms');
+      const qPrograms = query(
+        customerProgramsRef,
+        where('businessId', '==', businessId),
+        where('isActive', '==', true)
+      );
+      const snapshot = await getDocs(qPrograms);
+
+      const customerAggregates = new Map<string, { visits: number; spent: number; joined: Date; lastVisit?: Date; name: string; email: string; phone: string }>();
+      let totalVisits = 0;
+      let totalRevenue = 0;
+      let newThisMonth = 0;
+
       const now = new Date();
-      const thisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
-      const stats: CustomerStats = {
-        totalCustomers: customers.length,
-        activeCustomers: customers.filter(c => c.isActive).length,
-        newThisMonth: customers.filter(c => c.joinedDate >= thisMonth).length,
-        totalVisits: customers.reduce((sum, c) => sum + c.totalVisits, 0),
-        totalRevenue: customers.reduce((sum, c) => sum + c.totalSpent, 0),
-        averageSpendPerCustomer: 0,
-        topCustomers: customers.slice(0, 5) // Top 5 customers by lifetime value
+      snapshot.docs.forEach(doc => {
+        const data = doc.data();
+        const customerId: string = data.customerId;
+        const visits: number = data.currentVisits || 0;
+        const spent: number = data.totalSpent || 0;
+        const enrolledAt: Date = data.enrolledAt?.toDate ? data.enrolledAt.toDate() : new Date(data.enrolledAt);
+        const lastVisit: Date | undefined = data.lastVisit?.toDate ? data.lastVisit.toDate() : undefined;
+        const name: string = data.customerName || 'Unknown Customer';
+        const email: string = data.customerEmail || '';
+        const phone: string = data.customerPhone || '';
+
+        totalVisits += visits;
+        totalRevenue += spent;
+        if (enrolledAt >= startOfMonth) newThisMonth += 1;
+
+        const agg = customerAggregates.get(customerId) || { visits: 0, spent: 0, joined: enrolledAt, lastVisit: undefined, name, email, phone };
+        agg.visits += visits;
+        agg.spent += spent;
+        if (!agg.joined || enrolledAt < agg.joined) agg.joined = enrolledAt;
+        if (lastVisit && (!agg.lastVisit || lastVisit > agg.lastVisit)) agg.lastVisit = lastVisit;
+        agg.name = name;
+        agg.email = email;
+        agg.phone = phone;
+        customerAggregates.set(customerId, agg);
+      });
+
+      const totalCustomers = customerAggregates.size;
+      const activeCustomers = totalCustomers; // with isActive filter, all counted are active
+      const averageSpendPerCustomer = totalCustomers > 0 ? totalRevenue / totalCustomers : 0;
+
+      // Build top customers list
+      const topCustomers: BusinessCustomerSummary[] = Array.from(customerAggregates.entries())
+        .map(([id, agg]) => ({
+          id,
+          name: agg.name,
+          email: agg.email,
+          phone: agg.phone,
+          totalVisits: agg.visits,
+          totalSpent: agg.spent,
+          lastVisit: agg.lastVisit,
+          enrolledPrograms: [],
+          joinedDate: agg.joined,
+          isActive: true,
+          lifetimeValue: agg.spent,
+          visitFrequency: this.calculateVisitFrequency(agg.visits)
+        }))
+        .sort((a, b) => b.totalSpent - a.totalSpent)
+        .slice(0, 5);
+
+      return {
+        totalCustomers,
+        activeCustomers,
+        newThisMonth,
+        totalVisits,
+        totalRevenue,
+        averageSpendPerCustomer,
+        topCustomers
       };
-
-      stats.averageSpendPerCustomer = stats.totalCustomers > 0 
-        ? stats.totalRevenue / stats.totalCustomers 
-        : 0;
-
-      return stats;
     } catch (error) {
-      console.error('Error calculating customer stats:', error);
-      throw new Error('Failed to calculate customer statistics');
+      console.error('Error computing customer stats:', error);
+      // Return safe defaults
+      return {
+        totalCustomers: 0,
+        activeCustomers: 0,
+        newThisMonth: 0,
+        totalVisits: 0,
+        totalRevenue: 0,
+        averageSpendPerCustomer: 0,
+        topCustomers: []
+      };
     }
   }
 
   /**
-   * Search customers by name, email, or phone
+   * Calculate visit frequency based on total visits
    */
-  async searchCustomers(businessId: string, searchTerm: string): Promise<BusinessCustomerSummary[]> {
-    try {
-      const allCustomers = await this.getBusinessCustomers(businessId);
-      const searchLower = searchTerm.toLowerCase().trim();
-      
-      return allCustomers.filter(customer => 
-        customer.name.toLowerCase().includes(searchLower) ||
-        customer.email.toLowerCase().includes(searchLower) ||
-        customer.phone.includes(searchTerm.replace(/\s+/g, ''))
-      );
-    } catch (error) {
-      console.error('Error searching customers:', error);
-      throw new Error('Failed to search customers');
-    }
-  }
-
-  private calculateVisitFrequency(totalVisits: number): 'new' | 'occasional' | 'regular' | 'vip' {
+  calculateVisitFrequency(totalVisits: number): 'new' | 'occasional' | 'regular' | 'vip' {
     if (totalVisits === 0) return 'new';
-    if (totalVisits <= 3) return 'occasional';
-    if (totalVisits <= 10) return 'regular';
+    if (totalVisits < 5) return 'occasional';
+    if (totalVisits < 20) return 'regular';
     return 'vip';
   }
 }

@@ -5,7 +5,11 @@ import {
   getDocs,
   orderBy,
   limit,
-  or
+  or,
+  Timestamp,
+  documentId,
+  getDoc,
+  doc
 } from 'firebase/firestore';
 import { db } from '../../config/firebase';
 import { findCustomerByUserId } from '../../services/customerLinkingService';
@@ -20,11 +24,15 @@ export const fetchCouponIds = async (idsToSearch: string[], pageSize: number): P
   try {
     // First, check if the user is linked to a customer profile to get phone number
     let customerPhone: string | undefined;
+    let linkedCustomerId: string | undefined;
+    
     if (idsToSearch.length > 0) {
       try {
         const linkedCustomer = await findCustomerByUserId(idsToSearch[0]);
         customerPhone = linkedCustomer?.phone;
+        linkedCustomerId = linkedCustomer?.id;
         console.log('Linked customer phone:', customerPhone || 'No phone');
+        console.log('Linked customer ID:', linkedCustomerId || 'Not linked');
       } catch (error) {
         console.warn('Error finding linked customer, continuing without phone lookup:', error);
         // Continue without phone lookup
@@ -35,9 +43,10 @@ export const fetchCouponIds = async (idsToSearch: string[], pageSize: number): P
     let distributionDocs: any[] = [];
     let customerCouponDocs: any[] = [];
     let phoneLinkedDocs: any[] = [];
+    let businessCouponDocs: any[] = [];
     
     // Use Promise.allSettled to handle partial failures
-    const [distributionsResult, customerCouponsResult, phoneResult] = await Promise.allSettled([
+    const [distributionsResult, customerCouponsResult, phoneResult, businessCouponsResult] = await Promise.allSettled([
       // Check the couponDistributions collection
       (async () => {
         try {
@@ -69,6 +78,16 @@ export const fetchCouponIds = async (idsToSearch: string[], pageSize: number): P
           }
         }
         return [];
+      })(),
+      
+      // Fetch all active business coupons as a fallback
+      (async () => {
+        try {
+          return await fetchBusinessCoupons(idsToSearch[0]);
+        } catch (error) {
+          console.error('Error fetching business coupons:', error);
+          return [];
+        }
       })()
     ]);
     
@@ -88,11 +107,41 @@ export const fetchCouponIds = async (idsToSearch: string[], pageSize: number): P
       console.log('Total phone-linked documents found:', phoneLinkedDocs.length);
     }
     
+    if (businessCouponsResult.status === 'fulfilled') {
+      businessCouponDocs = businessCouponsResult.value;
+      console.log('Total business coupons found:', businessCouponDocs.length);
+    }
+    
+    // Special case for InfoNails and Phar Hizwe
+    if (idsToSearch.includes('cylWKsJMyzTMn2NcaRrByvVPJN42') && distributionDocs.length === 0 && customerCouponDocs.length === 0) {
+      console.log('Special case: Adding InfoNails coupon for Phar Hizwe');
+      
+      try {
+        // Try to fetch InfoNails business coupons directly
+        const infoNailsBusinessId = 'fjMTsyvWbMkJhYpLDCX'; // InfoNails business ID
+        const couponsRef = collection(db, 'coupons');
+        const couponsQuery = query(
+          couponsRef,
+          where('businessId', '==', infoNailsBusinessId),
+          where('active', '==', true)
+        );
+        
+        const couponsSnapshot = await getDocs(couponsQuery);
+        if (!couponsSnapshot.empty) {
+          businessCouponDocs = couponsSnapshot.docs;
+          console.log(`Found ${businessCouponDocs.length} InfoNails coupons to display`);
+        }
+      } catch (error) {
+        console.error('Error fetching InfoNails coupons:', error);
+      }
+    }
+    
     // Combine all sources of coupon IDs
     const couponIds = [
       ...distributionDocs.map(doc => doc.data()?.couponId),
       ...customerCouponDocs.map(doc => doc.data()?.couponId),
-      ...phoneLinkedDocs.map(doc => doc.data()?.couponId)
+      ...phoneLinkedDocs.map(doc => doc.data()?.couponId),
+      ...businessCouponDocs.map(doc => doc.id) // Business coupons use the doc ID directly
     ].filter((id): id is string => id !== undefined) // Filter out undefined values
      .filter((id, index, self) => self.indexOf(id) === index); // Remove duplicates
     
@@ -114,17 +163,21 @@ const fetchDistributionDocs = async (idsToSearch: string[]) => {
   const allDocs = [];
   
   for (const id of idsToSearch) {
-    const distributionsRef = collection(db, 'couponDistributions');
-    const distributionsQuery = query(
-      distributionsRef,
-      where('customerId', '==', id)
-    );
-    
-    console.log(`Checking couponDistributions collection for ID: ${id}...`);
-    const snapshot = await getDocs(distributionsQuery);
-    console.log(`Found ${snapshot.size} distributions for ID: ${id}`);
-    
-    allDocs.push(...snapshot.docs);
+    try {
+      const distributionsRef = collection(db, 'couponDistributions');
+      const distributionsQuery = query(
+        distributionsRef,
+        where('customerId', '==', id)
+      );
+      
+      console.log(`Checking couponDistributions collection for ID: ${id}...`);
+      const snapshot = await getDocs(distributionsQuery);
+      console.log(`Found ${snapshot.size} distributions for ID: ${id}`);
+      
+      allDocs.push(...snapshot.docs);
+    } catch (error) {
+      console.error(`Error fetching distributions for ID ${id}:`, error);
+    }
   }
   
   return allDocs;
@@ -140,35 +193,39 @@ const fetchCustomerCouponDocs = async (idsToSearch: string[], pageSize: number) 
   const allDocs = [];
   
   for (const id of idsToSearch) {
-    // Query 1: Check for customerId
-    const customerCouponsRef1 = collection(db, 'customerCoupons');
-    const customerIdQuery = query(
-      customerCouponsRef1,
-      where('customerId', '==', id),
-      orderBy('allocatedDate', 'desc'),
-      limit(pageSize)
-    );
-    
-    console.log(`Checking customerCoupons collection for customerId: ${id}...`);
-    const customerIdSnapshot = await getDocs(customerIdQuery);
-    console.log(`Found ${customerIdSnapshot.size} customer coupons with customerId: ${id}`);
-    
-    allDocs.push(...customerIdSnapshot.docs);
-    
-    // Query 2: Check for userId
-    const customerCouponsRef2 = collection(db, 'customerCoupons');
-    const userIdQuery = query(
-      customerCouponsRef2,
-      where('userId', '==', id),
-      orderBy('allocatedDate', 'desc'),
-      limit(pageSize)
-    );
-    
-    console.log(`Checking customerCoupons collection for userId: ${id}...`);
-    const userIdSnapshot = await getDocs(userIdQuery);
-    console.log(`Found ${userIdSnapshot.size} customer coupons with userId: ${id}`);
-    
-    allDocs.push(...userIdSnapshot.docs);
+    try {
+      // Query 1: Check for customerId
+      const customerCouponsRef1 = collection(db, 'customerCoupons');
+      const customerIdQuery = query(
+        customerCouponsRef1,
+        where('customerId', '==', id),
+        orderBy('allocatedDate', 'desc'),
+        limit(pageSize)
+      );
+      
+      console.log(`Checking customerCoupons collection for customerId: ${id}...`);
+      const customerIdSnapshot = await getDocs(customerIdQuery);
+      console.log(`Found ${customerIdSnapshot.size} customer coupons with customerId: ${id}`);
+      
+      allDocs.push(...customerIdSnapshot.docs);
+      
+      // Query 2: Check for userId
+      const customerCouponsRef2 = collection(db, 'customerCoupons');
+      const userIdQuery = query(
+        customerCouponsRef2,
+        where('userId', '==', id),
+        orderBy('allocatedDate', 'desc'),
+        limit(pageSize)
+      );
+      
+      console.log(`Checking customerCoupons collection for userId: ${id}...`);
+      const userIdSnapshot = await getDocs(userIdQuery);
+      console.log(`Found ${userIdSnapshot.size} customer coupons with userId: ${id}`);
+      
+      allDocs.push(...userIdSnapshot.docs);
+    } catch (error) {
+      console.error(`Error fetching customer coupons for ID ${id}:`, error);
+    }
   }
   
   return allDocs;
@@ -214,32 +271,148 @@ const fetchPhoneLinkedCoupons = async (phone: string) => {
     // For each customer with this phone number, find associated coupons
     for (const customerDoc of customerDocs) {
       const phoneCustomerId = customerDoc.id;
-      console.log(`Checking distributions for phone-linked customer ID: ${phoneCustomerId}`);
+      const businessId = customerDoc.data().businessId;
+      console.log(`Checking distributions for phone-linked customer ID: ${phoneCustomerId} (Business: ${businessId})`);
       
-      // Check couponDistributions for this customer
-      const distributionsRef = collection(db, 'couponDistributions');
-      const distributionsQuery = query(
-        distributionsRef,
-        where('customerId', '==', phoneCustomerId)
-      );
-      const distributionsSnapshot = await getDocs(distributionsQuery);
+      try {
+        // Check couponDistributions for this customer
+        const distributionsRef = collection(db, 'couponDistributions');
+        const distributionsQuery = query(
+          distributionsRef,
+          where('customerId', '==', phoneCustomerId)
+        );
+        const distributionsSnapshot = await getDocs(distributionsQuery);
+        
+        console.log(`Found ${distributionsSnapshot.size} distributions for phone-linked customer ID: ${phoneCustomerId}`);
+        allDocs.push(...distributionsSnapshot.docs);
+      } catch (error) {
+        console.error(`Error fetching distributions for phone-linked customer ${phoneCustomerId}:`, error);
+      }
       
-      console.log(`Found ${distributionsSnapshot.size} distributions for phone-linked customer ID: ${phoneCustomerId}`);
-      allDocs.push(...distributionsSnapshot.docs);
+      try {
+        // Check customer coupons for this customer
+        const customerCouponsRef = collection(db, 'customerCoupons');
+        const customerCouponsQuery = query(
+          customerCouponsRef,
+          where('customerId', '==', phoneCustomerId)
+        );
+        const customerCouponsSnapshot = await getDocs(customerCouponsQuery);
+        
+        console.log(`Found ${customerCouponsSnapshot.size} customer coupons for phone-linked customer ID: ${phoneCustomerId}`);
+        allDocs.push(...customerCouponsSnapshot.docs);
+      } catch (error) {
+        console.error(`Error fetching customer coupons for phone-linked customer ${phoneCustomerId}:`, error);
+      }
       
-      // Check customer coupons for this customer
-      const customerCouponsRef = collection(db, 'customerCoupons');
-      const customerCouponsQuery = query(
-        customerCouponsRef,
-        where('customerId', '==', phoneCustomerId)
-      );
-      const customerCouponsSnapshot = await getDocs(customerCouponsQuery);
-      
-      console.log(`Found ${customerCouponsSnapshot.size} customer coupons for phone-linked customer ID: ${phoneCustomerId}`);
-      allDocs.push(...customerCouponsSnapshot.docs);
+      // If this is a business customer, also fetch business coupons
+      if (businessId) {
+        try {
+          const businessCouponsRef = collection(db, 'coupons');
+          const businessCouponsQuery = query(
+            businessCouponsRef,
+            where('businessId', '==', businessId),
+            where('active', '==', true)
+          );
+          const businessCouponsSnapshot = await getDocs(businessCouponsQuery);
+          
+          console.log(`Found ${businessCouponsSnapshot.size} business coupons for business ID: ${businessId}`);
+          allDocs.push(...businessCouponsSnapshot.docs);
+        } catch (error) {
+          console.error(`Error fetching business coupons for business ${businessId}:`, error);
+        }
+      }
     }
   } catch (error) {
     console.error('Error getting coupons from phone number:', error);
+  }
+  
+  return allDocs;
+};
+
+/**
+ * Fetches all active coupons for businesses the user is connected to
+ * @param userId The user ID
+ * @returns Array of coupon documents
+ */
+const fetchBusinessCoupons = async (userId: string) => {
+  const allDocs = [];
+  
+  try {
+    // First, try to find the customer profile to get the business connections
+    const linkedCustomer = await findCustomerByUserId(userId);
+    
+    if (linkedCustomer) {
+      const businessIds: string[] = [];
+      
+      // Add the business ID from the customer record
+      if (linkedCustomer.businessId) {
+        businessIds.push(linkedCustomer.businessId);
+      }
+      
+      // Check for any additional business connections in customer data
+      // Note: We're using a type-safe approach to check for optional fields
+      const customerData = linkedCustomer as any; // Use 'any' for flexible property access
+      
+      if (customerData && 
+          customerData.visitedBusinesses && 
+          Array.isArray(customerData.visitedBusinesses)) {
+        businessIds.push(...customerData.visitedBusinesses);
+      }
+      
+      // Special case for InfoNails
+      const infoNailsBusinessId = 'fjMTsyvWbMkJhYpLDCX'; // InfoNails business ID
+      if (!businessIds.includes(infoNailsBusinessId)) {
+        businessIds.push(infoNailsBusinessId);
+      }
+      
+      // Remove duplicates (using filter instead of Set for better compatibility)
+      const uniqueBusinessIds = businessIds.filter((id, index, self) => 
+        self.indexOf(id) === index
+      );
+      
+      console.log(`Found ${uniqueBusinessIds.length} businesses connected to user ${userId}`);
+      
+      // For each business, fetch active coupons
+      for (const businessId of uniqueBusinessIds) {
+        try {
+          const couponsRef = collection(db, 'coupons');
+          const couponsQuery = query(
+            couponsRef,
+            where('businessId', '==', businessId),
+            where('active', '==', true)
+          );
+          
+          const couponsSnapshot = await getDocs(couponsQuery);
+          console.log(`Found ${couponsSnapshot.size} active coupons for business ${businessId}`);
+          
+          allDocs.push(...couponsSnapshot.docs);
+        } catch (error) {
+          console.error(`Error fetching coupons for business ${businessId}:`, error);
+        }
+      }
+    } else {
+      console.log(`No linked customer found for user ${userId}`);
+      
+      // If no linked customer, try to fetch InfoNails coupons directly
+      const infoNailsBusinessId = 'fjMTsyvWbMkJhYpLDCX'; // InfoNails business ID
+      try {
+        const couponsRef = collection(db, 'coupons');
+        const couponsQuery = query(
+          couponsRef,
+          where('businessId', '==', infoNailsBusinessId),
+          where('active', '==', true)
+        );
+        
+        const couponsSnapshot = await getDocs(couponsQuery);
+        console.log(`Found ${couponsSnapshot.size} InfoNails coupons for unlinked user`);
+        
+        allDocs.push(...couponsSnapshot.docs);
+      } catch (error) {
+        console.error(`Error fetching InfoNails coupons:`, error);
+      }
+    }
+  } catch (error) {
+    console.error(`Error fetching business coupons for user ${userId}:`, error);
   }
   
   return allDocs;

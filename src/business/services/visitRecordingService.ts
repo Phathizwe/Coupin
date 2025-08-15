@@ -1,5 +1,5 @@
 import { doc, updateDoc, increment, setDoc, getDoc, Timestamp, collection, query, where, getDocs } from 'firebase/firestore';
-import { db } from '../../firebase/config';
+import { db } from '../../config/firebase';
 
 export interface QRCodeData {
   customerId: string;

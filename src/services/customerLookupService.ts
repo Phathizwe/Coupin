@@ -6,11 +6,23 @@ import {
   getDoc,
   doc,
   setDoc,
-  serverTimestamp
+  serverTimestamp,
+  DocumentData
 } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { Customer } from '../types';
 import { enrollCustomerInProgram } from './customerProgramService';
+
+/**
+ * Normalize a phone number by removing non-digit characters
+ * @param phoneNumber The phone number to normalize
+ * @returns The normalized phone number
+ */
+export const normalizePhoneNumber = (phoneNumber: string): string => {
+  if (!phoneNumber) return '';
+  // Remove all non-digit characters
+  return phoneNumber.replace(/\D/g, '');
+};
 
 /**
  * Find a customer by phone number across the entire platform
@@ -20,11 +32,21 @@ import { enrollCustomerInProgram } from './customerProgramService';
 export const findCustomerByPhone = async (phoneNumber: string) => {
   try {
     if (!phoneNumber) {
+      console.log('findCustomerByPhone called with empty phone number');
       return null;
     }
     
+    console.log(`findCustomerByPhone: Searching for customer with phone ${phoneNumber}`);
+    
     // Normalize the phone number by removing spaces, dashes, etc.
-    const normalizedPhone = phoneNumber.replace(/\s+|-|\(|\)|\+/g, '');
+    const normalizedPhone = normalizePhoneNumber(phoneNumber);
+    
+    if (!normalizedPhone) {
+      console.log('Phone number normalized to empty string');
+      return null;
+    }
+    
+    console.log(`findCustomerByPhone: Normalized phone number: ${normalizedPhone}`);
     
     // First check in users collection (platform users)
     const usersRef = collection(db, 'users');
@@ -37,6 +59,7 @@ export const findCustomerByPhone = async (phoneNumber: string) => {
     const usersSnapshot = await getDocs(usersQuery);
     
     if (!usersSnapshot.empty) {
+      console.log(`findCustomerByPhone: Found user with phone ${normalizedPhone}`);
       const userData = usersSnapshot.docs[0].data();
       const userId = usersSnapshot.docs[0].id;
       
@@ -54,16 +77,18 @@ export const findCustomerByPhone = async (phoneNumber: string) => {
       };
     }
     
-    // If not found in users, check in customers collection
+    // If not found in users, check in customers collection with normalized phone
     const customersRef = collection(db, 'customers');
     const customersQuery = query(
       customersRef,
       where('phone', '==', normalizedPhone)
     );
     
+    console.log(`findCustomerByPhone: Searching customers collection with normalized phone: ${normalizedPhone}`);
     const customersSnapshot = await getDocs(customersQuery);
     
     if (!customersSnapshot.empty) {
+      console.log(`findCustomerByPhone: Found customer with normalized phone ${normalizedPhone}`);
       const customerData = customersSnapshot.docs[0].data();
       return {
         ...customerData,
@@ -74,6 +99,7 @@ export const findCustomerByPhone = async (phoneNumber: string) => {
     }
     
     // Try with the original phone format as a fallback
+    console.log(`findCustomerByPhone: Trying original phone format: ${phoneNumber}`);
     const fallbackQuery = query(
       customersRef,
       where('phone', '==', phoneNumber)
@@ -82,6 +108,7 @@ export const findCustomerByPhone = async (phoneNumber: string) => {
     const fallbackSnapshot = await getDocs(fallbackQuery);
     
     if (!fallbackSnapshot.empty) {
+      console.log(`findCustomerByPhone: Found customer with original phone format ${phoneNumber}`);
       const customerData = fallbackSnapshot.docs[0].data();
       return {
         ...customerData,
@@ -91,9 +118,44 @@ export const findCustomerByPhone = async (phoneNumber: string) => {
       };
     }
     
+    // Try with a partial match as a last resort
+    console.log(`findCustomerByPhone: Trying partial match for ${normalizedPhone}`);
+    // This query finds phone numbers that contain the normalized phone as a substring
+    // We'll do this client-side since Firestore doesn't support substring queries
+    const allCustomersQuery = query(customersRef);
+    const allCustomersSnapshot = await getDocs(allCustomersQuery);
+    
+    if (!allCustomersSnapshot.empty) {
+      // Define the type for matchingCustomers
+      const matchingCustomers: Array<DocumentData & { id: string; platformUser: boolean; source: string }> = [];
+      
+      allCustomersSnapshot.forEach(doc => {
+        const customerData = doc.data();
+        const customerPhone = normalizePhoneNumber(customerData.phone || '');
+        
+        // Check if either phone contains the other
+        if (customerPhone.includes(normalizedPhone) || normalizedPhone.includes(customerPhone)) {
+          matchingCustomers.push({
+            ...customerData,
+            id: doc.id,
+            platformUser: !!customerData.userId,
+            source: 'business'
+          });
+        }
+      });
+      
+      if (matchingCustomers.length > 0) {
+        console.log(`findCustomerByPhone: Found ${matchingCustomers.length} customers with partial phone match`);
+        // Return the first matching customer
+        return matchingCustomers[0];
+      }
+    }
+    
+    console.log(`findCustomerByPhone: No customer found with phone ${phoneNumber}`);
     return null;
   } catch (error) {
     console.error('Error finding customer by phone:', error);
+    console.error('Phone number that caused error:', phoneNumber);
     throw error;
   }
 };
@@ -161,6 +223,9 @@ export const getCustomerProgramStatus = async (customerId: string, businessId: s
  */
 export const addCustomerToBusiness = async (businessId: string, customerData: any) => {
   try {
+    // Normalize the phone number
+    const normalizedPhone = normalizePhoneNumber(customerData.phone || '');
+    
     // Create a new customer document
     const customersRef = collection(db, 'customers');
     const newCustomerRef = doc(customersRef);
@@ -170,7 +235,8 @@ export const addCustomerToBusiness = async (businessId: string, customerData: an
       firstName: customerData.firstName,
       lastName: customerData.lastName,
       email: customerData.email,
-      phone: customerData.phone,
+      phone: normalizedPhone, // Store the normalized phone number
+      originalPhone: customerData.phone, // Keep the original format for reference
       joinDate: serverTimestamp(),
       totalSpent: 0,
       totalVisits: 0,

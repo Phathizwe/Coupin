@@ -1,5 +1,5 @@
 import { doc, setDoc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
-import { db } from '../../firebase/config';
+import { db } from '../../config/firebase';
 // Remove useAuth import as it's not needed in a service file
 
 export interface CustomerProgram {

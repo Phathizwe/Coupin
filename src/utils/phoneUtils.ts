@@ -1,45 +1,74 @@
 /**
- * Normalizes a phone number for consistent storage and comparison
- * Keeps formatting characters for display purposes
+ * Utility functions for handling phone numbers
+ */
+
+/**
+ * Normalize a phone number by removing all non-digit characters
+ * Handles various formats like:
+ * - 0832091122
+ * - 083 209 1122
+ * - +27832091122
+ * - (083) 209 1122
+ * - 0027832091122
  * 
  * @param phone The phone number to normalize
- * @returns Normalized phone number
+ * @returns The normalized phone number (digits only)
  */
 export const normalizePhoneNumber = (phone: string): string => {
   if (!phone) return '';
   
-  // Remove any non-numeric characters except + for international prefix
-  const cleanedPhone = phone.replace(/[^\d+]/g, '');
-  
-  // Format the phone number for display (this is a simple example and can be enhanced)
-  if (cleanedPhone.startsWith('+')) {
-    // International format
-    if (cleanedPhone.length > 10) {
-      const countryCode = cleanedPhone.substring(0, cleanedPhone.length - 10);
-      const areaCode = cleanedPhone.substring(cleanedPhone.length - 10, cleanedPhone.length - 7);
-      const firstPart = cleanedPhone.substring(cleanedPhone.length - 7, cleanedPhone.length - 4);
-      const lastPart = cleanedPhone.substring(cleanedPhone.length - 4);
-      return `${countryCode} (${areaCode}) ${firstPart}-${lastPart}`;
-    }
-  } else if (cleanedPhone.length === 10) {
-    // Standard US/Canada format: (XXX) XXX-XXXX
-    const areaCode = cleanedPhone.substring(0, 3);
-    const firstPart = cleanedPhone.substring(3, 6);
-    const lastPart = cleanedPhone.substring(6);
-    return `(${areaCode}) ${firstPart}-${lastPart}`;
-  }
-  
-  // If we can't format it nicely, just return the cleaned version
-  return cleanedPhone;
+  // Remove all non-digit characters
+  return phone.replace(/\D/g, '');
 };
 
 /**
- * Extracts only digits from a phone number for database queries
+ * Compare two phone numbers to check if they match, regardless of format
  * 
- * @param phone The phone number to process
- * @returns String containing only digits
+ * @param phone1 First phone number
+ * @param phone2 Second phone number
+ * @returns True if the phone numbers match after normalization
  */
-export const getDigitsOnly = (phone: string): string => {
+export const phoneNumbersMatch = (phone1: string, phone2: string): boolean => {
+  if (!phone1 || !phone2) return false;
+  
+  const normalized1 = normalizePhoneNumber(phone1);
+  const normalized2 = normalizePhoneNumber(phone2);
+  
+  if (normalized1 === normalized2) return true;
+  
+  // Check for country code differences (e.g., +27 vs 0 for South Africa)
+  // This handles cases where one number has country code and the other doesn't
+  if (normalized1.startsWith('27') && normalized2.startsWith('0')) {
+    return normalized1.substring(2) === normalized2.substring(1);
+  }
+  
+  if (normalized2.startsWith('27') && normalized1.startsWith('0')) {
+    return normalized2.substring(2) === normalized1.substring(1);
+  }
+  
+  return false;
+};
+
+/**
+ * Format a phone number for display
+ * 
+ * @param phone The phone number to format
+ * @returns The formatted phone number
+ */
+export const formatPhoneNumber = (phone: string): string => {
   if (!phone) return '';
-  return phone.replace(/\D/g, '');
+  
+  const normalized = normalizePhoneNumber(phone);
+  
+  // Format based on length and first digits
+  if (normalized.startsWith('27') && normalized.length >= 11) {
+    // South African format with country code: +27 83 209 1122
+    return `+${normalized.substring(0, 2)} ${normalized.substring(2, 4)} ${normalized.substring(4, 7)} ${normalized.substring(7)}`;
+  } else if (normalized.startsWith('0') && normalized.length >= 10) {
+    // South African format without country code: 083 209 1122
+    return `${normalized.substring(0, 3)} ${normalized.substring(3, 6)} ${normalized.substring(6)}`;
+  }
+  
+  // Default formatting for other numbers
+  return normalized.replace(/(\d{3})(\d{3})(\d{4})/, '$1 $2 $3');
 };

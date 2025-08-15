@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { findCustomerByPhone, BusinessCustomer } from '../services/customerManagementService';
 import { useAuth } from '../../hooks/useAuth';
+import { normalizePhoneNumber } from '../../services/customerLookupService';
 
 interface CustomerPhoneLookupProps {
   onCustomerFound?: (customer: BusinessCustomer) => void;
@@ -13,6 +14,7 @@ export const CustomerPhoneLookup: React.FC<CustomerPhoneLookupProps> = ({ onCust
   const [searchResult, setSearchResult] = useState<{
     customer: BusinessCustomer | null;
     message: string;
+    debugInfo?: any;
   } | null>(null);
 
   const handleSearch = async () => {
@@ -22,28 +24,72 @@ export const CustomerPhoneLookup: React.FC<CustomerPhoneLookupProps> = ({ onCust
     setSearchResult(null);
     
     try {
-      const customer = await findCustomerByPhone(user.uid, phoneNumber);
+      // Normalize the phone number before searching
+      const normalizedPhone = normalizePhoneNumber(phoneNumber);
+      console.log(`CustomerPhoneLookup: Searching for customer with phone ${phoneNumber} (normalized: ${normalizedPhone})`);
+      
+      const customer = await findCustomerByPhone(user.uid, normalizedPhone);
       
       if (customer) {
         setSearchResult({
           customer,
-          message: 'Customer found!'
+          message: 'Customer found!',
+          debugInfo: {
+            originalPhone: phoneNumber,
+            normalizedPhone,
+            businessId: user.uid
+          }
         });
         
         if (onCustomerFound) {
           onCustomerFound(customer);
         }
       } else {
+        // If no customer found with normalized phone, try with original format
+        if (normalizedPhone !== phoneNumber) {
+          console.log(`CustomerPhoneLookup: No customer found with normalized phone, trying original format: ${phoneNumber}`);
+          const customerWithOriginal = await findCustomerByPhone(user.uid, phoneNumber);
+          
+          if (customerWithOriginal) {
+            setSearchResult({
+              customer: customerWithOriginal,
+              message: 'Customer found with original phone format!',
+              debugInfo: {
+                originalPhone: phoneNumber,
+                normalizedPhone,
+                businessId: user.uid,
+                foundWith: 'original'
+              }
+            });
+            
+            if (onCustomerFound) {
+              onCustomerFound(customerWithOriginal);
+            }
+            
+            return;
+          }
+        }
+        
         setSearchResult({
           customer: null,
-          message: `No customer found with phone number ${phoneNumber}`
+          message: `No customer found with phone number ${phoneNumber}`,
+          debugInfo: {
+            originalPhone: phoneNumber,
+            normalizedPhone,
+            businessId: user.uid
+          }
         });
       }
     } catch (error) {
       console.error('Error searching for customer:', error);
       setSearchResult({
         customer: null,
-        message: 'Error searching for customer. Please try again.'
+        message: 'Error searching for customer. Please try again.',
+        debugInfo: {
+          error: error instanceof Error ? error.message : String(error),
+          originalPhone: phoneNumber,
+          businessId: user?.uid
+        }
       });
     } finally {
       setIsSearching(false);
@@ -101,7 +147,17 @@ export const CustomerPhoneLookup: React.FC<CustomerPhoneLookupProps> = ({ onCust
               </button>
             </div>
           ) : (
-            <p>{searchResult.message}</p>
+            <div>
+              <p>{searchResult.message}</p>
+              {searchResult.debugInfo && (
+                <div className="debug-info text-xs mt-2 p-2 bg-gray-100 rounded">
+                  <p><strong>Debug Info:</strong></p>
+                  <p>Original Phone: {searchResult.debugInfo.originalPhone}</p>
+                  <p>Normalized Phone: {searchResult.debugInfo.normalizedPhone}</p>
+                  {searchResult.debugInfo.error && <p>Error: {searchResult.debugInfo.error}</p>}
+                </div>
+              )}
+            </div>
           )}
         </div>
       )}

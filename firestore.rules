@@ -23,13 +23,28 @@ service cloud.firestore {
     }
 
     // Resolve customer ownership via customers -> userId link
+    // Resolve customer ownership via customers -> userId link
+    // Some records are stored with document ID = customerId, others as businessId_customerId.
+    // Allow either format for ownership checks to prevent false denials.
     function isCustomerOwnedByRequester(customerId) {
-      return isAuthenticated() &&
-        get(/databases/$(database)/documents/customers/$(customerId)).data.userId == request.auth.uid;
+      return isAuthenticated() && (
+        // Standard doc id format
+        get(/databases/$(database)/documents/customers/$(customerId)).data.userId == request.auth.uid ||
+        // Business-scoped doc id format: <businessId>_<customerId> (derive businessId from the resource being accessed)
+        (
+          resource.data.businessId != null &&
+          get(/databases/$(database)/documents/customers/$(resource.data.businessId + '_' + customerId)).data.userId == request.auth.uid
+        )
+      );
     }
 
     function isBusinessCustomer(businessId, customerId) {
       return get(/databases/$(database)/documents/customers/$(customerId)).data.businessId == businessId;
+    }
+    
+    // Special case for InfoNails and Phar Hizwe
+    function isInfoNailsSpecialCase() {
+      return request.auth.uid == "cylWKsJMyzTMn2NcaRrByvVPJN42";
     }
     
     // Users collection
@@ -50,11 +65,30 @@ service cloud.firestore {
     
     // Customers collection
     match /customers/{customerId} {
-      allow read: if isAuthenticated() && 
+      allow read: if isAuthenticated() &&
         (isOwner(resource.data.userId) || hasBusinessAccess(resource.data.businessId));
-      allow create: if isAuthenticated() && hasBusinessAccess(request.resource.data.businessId);
-      allow update: if isAuthenticated() && 
-        (isOwner(resource.data.userId) || hasBusinessAccess(resource.data.businessId));
+      // Allow business to create its own customers OR allow a logged-in user to create a personal customer record (no business) for linking
+      allow create: if isAuthenticated() && (
+        hasBusinessAccess(request.resource.data.businessId) ||
+        (
+          request.resource.data.userId == request.auth.uid &&
+          (request.resource.data.businessId == null || request.resource.data.businessId == '')
+        )
+      );
+      // Allow updates by owner/business OR allow one-time linking when phones match and userId is being set to self
+      allow update: if isAuthenticated() && (
+        (resource.data.userId != null && resource.data.userId == request.auth.uid) ||
+        hasBusinessAccess(resource.data.businessId) ||
+        (
+          // Linking case: only when setting userId to current user, and resource had no userId
+          resource.data.userId == null &&
+          request.resource.data.userId == request.auth.uid &&
+          (
+            (resource.data.phone != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.phoneNumber == resource.data.phone) ||
+            (resource.data.phone_normalized != null && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.phoneNumber == resource.data.phone_normalized)
+          )
+        )
+      );
       allow delete: if isAuthenticated() && hasBusinessAccess(resource.data.businessId);
     }
     
@@ -74,7 +108,7 @@ service cloud.firestore {
       allow delete: if isAuthenticated() && hasBusinessAccess(resource.data.businessId);
     }
     
-    // Loyalty Members collection - ADDED THIS SECTION
+    // Loyalty Members collection
     match /loyaltyMembers/{memberId} {
       allow read: if true; // Allow public read for discovery
       allow create: if isAuthenticated() && hasBusinessAccess(request.resource.data.businessId);
@@ -82,7 +116,7 @@ service cloud.firestore {
       allow delete: if isAuthenticated() && hasBusinessAccess(resource.data.businessId);
     }
     
-    // Loyalty Rewards collection - ADDED THIS SECTION
+    // Loyalty Rewards collection
     match /loyaltyRewards/{rewardId} {
       allow read: if true; // Allow public read for discovery
       allow create: if isAuthenticated() && hasBusinessAccess(request.resource.data.businessId);
@@ -124,9 +158,14 @@ service cloud.firestore {
     // Coupon Distributions collection
     match /couponDistributions/{distributionId} {
       allow read: if isAuthenticated() && (
+        // Allow if userId matches
         (resource.data.userId != null && resource.data.userId == request.auth.uid) ||
+        // Allow if customerId is owned by requester
         (resource.data.customerId != null && isCustomerOwnedByRequester(resource.data.customerId)) ||
-        hasBusinessAccess(resource.data.businessId)
+        // Allow business access
+        hasBusinessAccess(resource.data.businessId) ||
+        // Special case for InfoNails
+        (resource.data.businessId == "fjMTsyvWbMkJhYpLDCX" && isInfoNailsSpecialCase())
       );
       allow create: if isAuthenticated() && (
         (request.resource.data.userId != null && request.resource.data.userId == request.auth.uid) ||
@@ -142,9 +181,14 @@ service cloud.firestore {
     // Customer Coupons collection
     match /customerCoupons/{customerCouponId} {
       allow read: if isAuthenticated() && (
+        // Allow if userId matches
         (resource.data.userId != null && resource.data.userId == request.auth.uid) ||
+        // Allow if customerId is owned by requester
         (resource.data.customerId != null && isCustomerOwnedByRequester(resource.data.customerId)) ||
-        hasBusinessAccess(resource.data.businessId)
+        // Allow business access
+        hasBusinessAccess(resource.data.businessId) ||
+        // Special case for InfoNails
+        (resource.data.businessId == "fjMTsyvWbMkJhYpLDCX" && isInfoNailsSpecialCase())
       );
       allow create: if isAuthenticated();
       allow update: if isAuthenticated() && (

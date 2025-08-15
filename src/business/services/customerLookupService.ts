@@ -1,5 +1,5 @@
 import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
-import { db } from '../../firebase/config';
+import { db } from '../../config/firebase';
 
 export interface BusinessCustomer {
   id: string;
@@ -59,13 +59,23 @@ export class CustomerLookupService {
       });
 
       // Calculate totals across all programs
-      const totalVisits = loyaltyPrograms.reduce((sum, program) => sum + program.currentVisits, 0);
-      const totalSpent = programsSnapshot.docs.reduce((sum, doc) => sum + (doc.data().totalSpent || 0), 0);
+      const totalVisits = loyaltyPrograms.reduce((sum, p) => sum + p.currentVisits, 0);
+      const totalSpent = programsSnapshot.docs.reduce((sum, d) => sum + (d.data().totalSpent || 0), 0);
 
-      const customer: BusinessCustomer = {
+      // Try to fetch customer profile for additional info
+      let customerName = firstProgram.customerName || '';
+      let email = firstProgram.customerEmail || '';
+      const customerDoc = await getDoc(doc(db, 'customers', customerId));
+      if (customerDoc.exists()) {
+        const data = customerDoc.data();
+        customerName = customerName || `${data.firstName || ''} ${data.lastName || ''}`.trim();
+        email = email || data.email || '';
+      }
+
+      return {
         id: customerId,
-        name: firstProgram.customerName,
-        email: firstProgram.customerEmail,
+        name: customerName || 'Unknown Customer',
+        email,
         phone: firstProgram.customerPhone,
         businessId,
         totalVisits,
@@ -74,64 +84,9 @@ export class CustomerLookupService {
         loyaltyPrograms,
         isActive: true
       };
-
-      return customer;
     } catch (error) {
-      console.error('Customer lookup error:', error);
-      throw new Error('Failed to find customer');
-    }
-  }
-
-  /**
-   * Get all customers for a business
-   */
-  async getBusinessCustomers(businessId: string): Promise<BusinessCustomer[]> {
-    try {
-      const customerProgramsRef = collection(db, 'customerPrograms');
-      const businessQuery = query(
-        customerProgramsRef,
-        where('businessId', '==', businessId),
-        where('isActive', '==', true)
-      );
-      const snapshot = await getDocs(businessQuery);
-      const customerMap = new Map<string, BusinessCustomer>();
-
-      // Group programs by customer
-      snapshot.docs.forEach(doc => {
-        const data = doc.data();
-        const customerId = data.customerId;
-
-        if (!customerMap.has(customerId)) {
-          customerMap.set(customerId, {
-            id: customerId,
-            name: data.customerName,
-            email: data.customerEmail,
-            phone: data.customerPhone,
-            businessId,
-            totalVisits: 0,
-            totalSpent: 0,
-            lastVisit: data.lastVisit?.toDate(),
-            loyaltyPrograms: [],
-            isActive: true
-          });
-        }
-
-        const customer = customerMap.get(customerId)!;
-        customer.loyaltyPrograms.push({
-          programId: data.programId,
-          programName: data.programName,
-          currentPoints: data.currentPoints || 0,
-          currentVisits: data.currentVisits || 0,
-          enrolledAt: data.enrolledAt.toDate()
-        });
-        customer.totalVisits += data.currentVisits || 0;
-        customer.totalSpent += data.totalSpent || 0;
-      });
-
-      return Array.from(customerMap.values());
-    } catch (error) {
-      console.error('Error fetching business customers:', error);
-      return [];
+      console.error('Error looking up customer by phone:', error);
+      return null;
     }
   }
 }

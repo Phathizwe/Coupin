@@ -26,6 +26,7 @@ const LoyaltySendCouponModal: React.FC<LoyaltySendCouponModalProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [debugInfo, setDebugInfo] = useState<any>(null);
 
   // Fetch available coupons when component mounts
   useEffect(() => {
@@ -68,6 +69,7 @@ const LoyaltySendCouponModal: React.FC<LoyaltySendCouponModalProps> = ({
     
     setIsLoading(true);
     setErrorMessage('');
+    setDebugInfo(null);
     
     try {
       const customersRef = collection(db, 'customers');
@@ -75,24 +77,76 @@ const LoyaltySendCouponModal: React.FC<LoyaltySendCouponModalProps> = ({
       
       // We'll search by phone number if the search term contains only numbers
       if (/^\d+$/.test(searchTerm)) {
+        // Normalize the phone number first
+        const normalizedPhone = searchTerm.replace(/\s+|-|\(|\)|\+/g, '');
+        
+        console.log('Searching for customer with normalized phone:', normalizedPhone);
+        setDebugInfo({
+          normalizedPhone,
+          originalPhone: searchTerm,
+          businessId: program.businessId
+        });
+        
+        // First try with normalized phone
         const q = query(
           customersRef,
           where('businessId', '==', program.businessId),
-          where('phone', '>=', searchTerm),
-          where('phone', '<=', searchTerm + '\uf8ff')
+          where('phone', '==', normalizedPhone)
         );
         
         const snapshot = await getDocs(q);
         
-        if (!snapshot.empty) {
+        // If no results with normalized phone, try original format as fallback
+        if (snapshot.empty) {
+          console.log('No results with normalized phone, trying original format:', searchTerm);
+          
+          const fallbackQ = query(
+            customersRef,
+            where('businessId', '==', program.businessId),
+            where('phone', '==', searchTerm)
+          );
+          
+          const fallbackSnapshot = await getDocs(fallbackQ);
+          
+          if (!fallbackSnapshot.empty) {
+            const fetchedCustomers: Customer[] = [];
+            fallbackSnapshot.forEach(doc => {
+              fetchedCustomers.push({ id: doc.id, ...doc.data() } as Customer);
+            });
+            setCustomers(fetchedCustomers);
+            console.log('Found customers with original phone format:', fetchedCustomers.length);
+          } else {
+            // As a last resort, try a prefix search
+            console.log('No exact matches, trying prefix search as last resort');
+            
+            const prefixQ = query(
+              customersRef,
+              where('businessId', '==', program.businessId),
+              where('phone', '>=', normalizedPhone),
+              where('phone', '<=', normalizedPhone + '\uf8ff')
+            );
+            
+            const prefixSnapshot = await getDocs(prefixQ);
+            
+            if (!prefixSnapshot.empty) {
+              const fetchedCustomers: Customer[] = [];
+              prefixSnapshot.forEach(doc => {
+                fetchedCustomers.push({ id: doc.id, ...doc.data() } as Customer);
+              });
+              setCustomers(fetchedCustomers);
+              console.log('Found customers with prefix search:', fetchedCustomers.length);
+            } else {
+              setCustomers([]);
+              setErrorMessage('No customers found with that phone number');
+            }
+          }
+        } else {
           const fetchedCustomers: Customer[] = [];
           snapshot.forEach(doc => {
             fetchedCustomers.push({ id: doc.id, ...doc.data() } as Customer);
           });
           setCustomers(fetchedCustomers);
-        } else {
-          setCustomers([]);
-          setErrorMessage('No customers found with that phone number');
+          console.log('Found customers with normalized phone:', fetchedCustomers.length);
         }
       } else {
         // For text search, we'll fetch all customers and filter client-side
@@ -128,7 +182,14 @@ const LoyaltySendCouponModal: React.FC<LoyaltySendCouponModalProps> = ({
       }
     } catch (error) {
       console.error('Error searching customers:', error);
+      console.log('Search term used:', searchTerm);
+      console.log('Business ID:', program.businessId);
       setErrorMessage('An error occurred while searching for customers');
+      setDebugInfo({
+        error: error instanceof Error ? error.message : String(error),
+        searchTerm,
+        businessId: program.businessId
+      });
     } finally {
       setIsLoading(false);
     }
@@ -140,22 +201,25 @@ const LoyaltySendCouponModal: React.FC<LoyaltySendCouponModalProps> = ({
       setErrorMessage('Please select both a customer and a coupon');
       return;
     }
-    
+
     setIsSending(true);
-    
+
     try {
-      // In a real app, you'd create a customer_coupons record and possibly send an email/SMS
-      const customerCouponsRef = collection(db, 'customer_coupons');
-      
+      // Create a customerCoupons record so downstream queries can find it
+      const customerCouponsRef = collection(db, 'customerCoupons');
+
       await addDoc(customerCouponsRef, {
         customerId: selectedCustomer.id,
+        userId: (selectedCustomer as any)?.userId || null, // helps Firestore rules authorize the customer to read
         couponId: selectedCoupon.id,
         businessId: program.businessId,
+        status: 'sent', // align with existing schema where status is used
         redeemed: false,
         sentAt: Timestamp.now(),
+        allocatedDate: Timestamp.now(), // ensure presence for queries that orderBy('allocatedDate')
         expiresAt: selectedCoupon.endDate
       });
-      
+
       toast.success(`Coupon sent to ${selectedCustomer.firstName}!`);
       onSuccess();
     } catch (error) {
@@ -273,7 +337,16 @@ const LoyaltySendCouponModal: React.FC<LoyaltySendCouponModalProps> = ({
         
         {errorMessage && (
           <div className="mb-4 p-3 bg-red-50 border border-red-200 text-red-700 rounded-md">
-            {errorMessage}
+            <p>{errorMessage}</p>
+            {debugInfo && /^\d+$/.test(searchTerm) && (
+              <div className="mt-2 text-xs border-t border-red-200 pt-2">
+                <p className="font-semibold">Debug info:</p>
+                <p>Original phone: {debugInfo.originalPhone}</p>
+                <p>Normalized phone: {debugInfo.normalizedPhone}</p>
+                <p>Business ID: {debugInfo.businessId}</p>
+                {debugInfo.error && <p>Error: {debugInfo.error}</p>}
+              </div>
+            )}
           </div>
         )}
         

@@ -13,6 +13,7 @@ import { createUserWithEmailAndPassword, signOut } from 'firebase/auth';
 import { logAnalyticsEvent } from '../../config/firebase';
 import { ensureUserHasBusiness } from '../../services/businessRegistrationService';
 import { diagnoseBusiness } from '../../utils/registrationDiagnostics';
+import { normalizePhoneNumber } from '../../utils/phoneUtils';
 
 /**
  * Direct implementation of enhanced registration page that bypasses the auth hook
@@ -28,7 +29,7 @@ const EnhancedRegisterPageDirect: React.FC = () => {
   const [accountType, setAccountType] = useState<'customer' | 'business'>(
     typeFromQuery === 'business' ? 'business' : 'customer'
   );
-  
+
   const [isLoading, setIsLoading] = useState(false);
   const [linkingSuccess, setLinkingSuccess] = useState(false);
   const { googleSignIn, facebookSignIn, microsoftSignIn, linkedInSignIn } = useAuth();
@@ -51,7 +52,7 @@ const EnhancedRegisterPageDirect: React.FC = () => {
       const leadsRef = collection(db, 'leadCapture');
       const q = query(leadsRef, where('email', '==', email));
       const querySnapshot = await getDocs(q);
-      
+
       if (!querySnapshot.empty) {
         // Update the first matching record (should be only one)
         const docRef = doc(db, 'leadCapture', querySnapshot.docs[0].id);
@@ -64,25 +65,28 @@ const EnhancedRegisterPageDirect: React.FC = () => {
     } catch (error) {
       console.error('[EnhancedRegisterPage] Error updating lead record:', error);
     }
-};
+  };
 
   // Direct registration implementation that bypasses the auth hook
-  const directRegister = async (email: string, password: string, name: string, role: 'customer' | 'business') => {
+  const directRegister = async (email: string, password: string, name: string, role: 'customer' | 'business', phone?: string) => {
     try {
       console.log(`[DirectRegister] Registering user ${email} as ${role}`);
-      
+
       // Create the user with Firebase Authentication
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
-      
+
       if (!user || !user.uid) {
         throw new Error('Failed to create user account');
       }
-      
+
       console.log(`[DirectRegister] User created with ID: ${user.uid}`);
-      
+
+      // Normalize phone for consistent lookups
+      const normalizedPhone = phone ? normalizePhoneNumber(phone) : undefined;
+
       // Create user document in Firestore
-      const userData = {
+      const userData: any = {
         uid: user.uid,
         email: user.email,
         displayName: name,
@@ -90,16 +94,20 @@ const EnhancedRegisterPageDirect: React.FC = () => {
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       };
-      
+
+      if (normalizedPhone) {
+        userData.phoneNumber = normalizedPhone;
+      }
+
       await setDoc(doc(db, 'users', user.uid), userData);
       console.log(`[DirectRegister] User document created in Firestore`);
-      
+
       // For business users, create a business document
       if (role === 'business') {
         try {
           const businessId = await ensureUserHasBusiness(user.uid, name);
           console.log(`[DirectRegister] Business created with ID: ${businessId}`);
-          
+
           // Update the user document with the business ID
           await updateDoc(doc(db, 'users', user.uid), {
             businessId,
@@ -110,7 +118,7 @@ const EnhancedRegisterPageDirect: React.FC = () => {
           console.error('[DirectRegister] Error creating business:', businessError);
         }
       }
-      
+
       return user;
     } catch (error: any) {
       console.error('[DirectRegister] Registration error:', error);
@@ -121,24 +129,24 @@ const EnhancedRegisterPageDirect: React.FC = () => {
   // Handle form submission
   const handleRegistration = async (values: any) => {
     setIsLoading(true);
-    
+
     try {
       console.log(`[EnhancedRegisterPage] Starting direct registration for ${values.email} as ${accountType}`);
-      
+
       // Register the user directly
-      const user = await directRegister(values.email, values.password, values.name, accountType);
-      
+      const user = await directRegister(values.email, values.password, values.name, accountType, values.phone);
+
       if (!user || !user.uid) {
         throw new Error('Registration failed: Invalid user credential');
       }
-      
+
       console.log('[EnhancedRegisterPage] User registered successfully with ID:', user.uid);
-      
+
       // Update lead record if email was provided
       if (values.email) {
         await updateLeadRecord(values.email);
       }
-      
+
       // For business users, run diagnostics
       if (accountType === 'business') {
         try {
@@ -148,23 +156,23 @@ const EnhancedRegisterPageDirect: React.FC = () => {
           console.error('[EnhancedRegisterPage] Diagnostics error:', diagError);
         }
       }
-      
+
       toast.success('Account created successfully!');
-      
+
       // Instead of trying to update the auth context directly,
       // we'll force a full page reload to trigger the auth state listener
       // This will ensure the auth context is properly updated
-      
+
       // Store the destination in session storage
       const destination = accountType === 'business' ? '/business/dashboard' : '/customer/dashboard';
       sessionStorage.setItem('auth_redirect', destination);
-      
+
       // Reload the page to trigger the auth state listener
       window.location.href = destination;
-      
+
     } catch (error: any) {
       console.error('[EnhancedRegisterPage] Registration error:', error);
-      
+
       if (error.code === 'auth/email-already-in-use') {
         toast.error('This email is already registered. Please login instead.');
       } else if (error.code === 'auth/weak-password') {
@@ -172,7 +180,7 @@ const EnhancedRegisterPageDirect: React.FC = () => {
       } else {
         toast.error(error.message || 'Failed to create account');
       }
-      
+
     } finally {
       setIsLoading(false);
     }
@@ -202,23 +210,23 @@ const EnhancedRegisterPageDirect: React.FC = () => {
     setIsLoading(true);
     try {
       console.log(`[EnhancedRegisterPage] Starting ${provider} sign-in as ${accountType}`);
-      
+
       const result = await signInMethod();
-      
+
       if (!result || !auth.currentUser) {
         throw new Error(`${provider} sign-in failed`);
       }
-      
+
       const userId = auth.currentUser.uid;
       console.log(`[EnhancedRegisterPage] ${provider} sign-in successful:`, userId);
-      
+
       // Update user role to match selected account type
       const userRef = doc(db, 'users', userId);
       await updateDoc(userRef, {
         role: accountType,
         updatedAt: serverTimestamp()
       });
-      
+
       // For business users, ensure business document exists
       if (accountType === 'business') {
         try {
@@ -227,21 +235,21 @@ const EnhancedRegisterPageDirect: React.FC = () => {
           console.error(`[EnhancedRegisterPage] Error setting up business:`, error);
         }
       }
-      
+
       // Update lead record if we have an email
       if (emailFromQuery) {
         await updateLeadRecord(emailFromQuery);
       }
-      
+
       toast.success(`Signed in successfully with ${provider}!`);
-      
+
       // Store the destination in session storage
       const destination = accountType === 'business' ? '/business/dashboard' : '/customer/dashboard';
       sessionStorage.setItem('auth_redirect', destination);
-      
+
       // Reload the page to trigger the auth state listener
       window.location.href = destination;
-      
+
     } catch (error: any) {
       console.error(`[EnhancedRegisterPage] ${provider} sign-in error:`, error);
       toast.error(`Failed to sign in with ${provider}`);
@@ -262,23 +270,23 @@ const EnhancedRegisterPageDirect: React.FC = () => {
           <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
             Create your account
           </h2>
-          
+
           {/* Account type selector component */}
-          <AccountTypeSelector 
-            accountType={accountType} 
-            setAccountType={setAccountType} 
+          <AccountTypeSelector
+            accountType={accountType}
+            setAccountType={setAccountType}
           />
         </div>
 
         {/* Registration form component */}
-        <RegisterForm 
-          formik={formik} 
-          accountType={accountType} 
-          isLoading={isLoading} 
+        <RegisterForm
+          formik={formik}
+          accountType={accountType}
+          isLoading={isLoading}
         />
 
         {/* Social sign-in buttons component */}
-        <SocialSignInButtons 
+        <SocialSignInButtons
           onGoogleSignIn={handleGoogleSignIn}
           onFacebookSignIn={handleFacebookSignIn}
           onMicrosoftSignIn={handleMicrosoftSignIn}
