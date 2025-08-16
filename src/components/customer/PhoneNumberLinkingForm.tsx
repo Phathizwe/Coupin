@@ -1,33 +1,26 @@
+/**
+ * Phone number linking form component
+ * Allows users to update their phone number and link to existing customer records
+ */
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../hooks/useAuth';
 import { customerAccountLinkingService } from '../../services/customerAccountLinkingService';
-import { normalizePhoneNumber } from '../../utils/phoneUtils';
-import { doc, updateDoc, getFirestore } from 'firebase/firestore';
+import { formatPhoneForDisplay } from '../../utils/phoneUtils';
 
 interface PhoneNumberLinkingFormProps {
   onSuccess?: (customerId: string) => void;
-  onError?: (error: any) => void;
 }
 
-/**
- * A form component that allows users to add or update their phone number
- * and automatically links their account to existing customer records.
- */
-const PhoneNumberLinkingForm: React.FC<PhoneNumberLinkingFormProps> = ({
-  onSuccess,
-  onError
-}) => {
+const PhoneNumberLinkingForm: React.FC<PhoneNumberLinkingFormProps> = ({ onSuccess }) => {
   const { user } = useAuth();
   const [phoneNumber, setPhoneNumber] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [status, setStatus] = useState<'idle' | 'submitting' | 'success' | 'error'>('idle');
-  const [message, setMessage] = useState('');
-  const [foundCustomerId, setFoundCustomerId] = useState<string | null>(null);
-  
-  // Pre-fill the phone number if the user already has one
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' | 'info' } | null>(null);
+
   useEffect(() => {
+    // Initialize with user's current phone number if available
     if (user?.phoneNumber) {
-      setPhoneNumber(user.phoneNumber);
+      setPhoneNumber(formatPhoneForDisplay(user.phoneNumber));
     }
   }, [user]);
 
@@ -35,126 +28,96 @@ const PhoneNumberLinkingForm: React.FC<PhoneNumberLinkingFormProps> = ({
     e.preventDefault();
     
     if (!user) {
-      setStatus('error');
-      setMessage('You must be logged in to update your phone number.');
+      setMessage({ text: 'You must be logged in to update your phone number', type: 'error' });
       return;
     }
     
-    if (!phoneNumber.trim()) {
-      setStatus('error');
-      setMessage('Please enter a valid phone number.');
+    if (!phoneNumber) {
+      setMessage({ text: 'Please enter a phone number', type: 'error' });
       return;
     }
+    
+    setIsProcessing(true);
+    setMessage(null);
     
     try {
-      setIsSubmitting(true);
-      setStatus('submitting');
-      setMessage('Updating your phone number and checking for existing coupons...');
+      const customerId = await customerAccountLinkingService.updateUserPhoneAndLinkCustomer(
+        user.uid,
+        phoneNumber
+      );
       
-      // Normalize the phone number
-      const normalizedPhone = normalizePhoneNumber(phoneNumber);
-      
-      // Update the user's phone number in Firebase Auth
-      const db = getFirestore();
-      await updateDoc(doc(db, 'users', user.uid), {
-        phoneNumber: phoneNumber,
-        phoneNumber_normalized: normalizedPhone
-      });
-      
-      // Look for existing customer records with this phone number
-      const customer = await customerAccountLinkingService.findCustomerByPhone(phoneNumber);
-      
-      if (customer) {
-        // Link the user to the customer record
-        const linked = await customerAccountLinkingService.linkUserToCustomer(user.uid, customer.id);
-        
-        if (linked) {
-          setStatus('success');
-          setMessage('Your phone number has been updated and linked to your existing coupons!');
-          setFoundCustomerId(customer.id);
-          onSuccess?.(customer.id);
-        } else {
-          setStatus('error');
-          setMessage('Your phone number was updated, but we couldn\'t link it to existing coupons. Please try again later.');
-          onError?.(new Error('Failed to link customer'));
-        }
+      if (customerId) {
+        setMessage({ 
+          text: 'Your phone number has been updated and linked to your customer account!', 
+          type: 'success' 
+        });
+        onSuccess?.(customerId);
       } else {
-        // No existing customer found, but phone number was updated
-        setStatus('success');
-        setMessage('Your phone number has been updated. No existing coupons were found for this number.');
-        onSuccess?.('');
+        setMessage({ 
+          text: 'Your phone number has been updated. No existing customer account was found to link.', 
+          type: 'info' 
+        });
       }
     } catch (error) {
       console.error('Error updating phone number:', error);
-      setStatus('error');
-      setMessage('An error occurred while updating your phone number. Please try again later.');
-      onError?.(error);
+      setMessage({ 
+        text: 'Failed to update phone number. Please try again.', 
+        type: 'error' 
+      });
     } finally {
-      setIsSubmitting(false);
+      setIsProcessing(false);
     }
   };
-  
-  // Format the phone number as the user types
-  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    // Allow only digits, spaces, parentheses, plus, and dashes
-    const value = e.target.value.replace(/[^\d\s()+\-]/g, '');
-    setPhoneNumber(value);
-  };
-  
+
   return (
-    <div className="phone-number-linking-form">
+    <div className="p-4 bg-white rounded-lg shadow-sm">
+      <h3 className="text-lg font-medium mb-4">Update Phone Number</h3>
+      
+      {user?.linkedCustomerId && (
+        <div className="mb-4 p-2 bg-green-50 text-green-700 rounded">
+          ✅ Your account is linked to a customer profile
+        </div>
+      )}
+      
       <form onSubmit={handleSubmit}>
-        <div className="form-group">
-          <label htmlFor="phoneNumber">Phone Number</label>
+        <div className="mb-4">
+          <label htmlFor="phoneNumber" className="block text-sm font-medium text-gray-700 mb-1">
+            Phone Number
+          </label>
           <input
             type="tel"
             id="phoneNumber"
             value={phoneNumber}
-            onChange={handlePhoneChange}
-            placeholder="e.g., (083) 209 1122 or 0832091122"
-            disabled={isSubmitting}
-            className="form-control"
+            onChange={(e) => setPhoneNumber(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+            placeholder="083 209 1122"
+            disabled={isProcessing}
           />
-          <small className="form-text text-muted">
-            Enter your phone number in any format. We'll match it to any coupons sent to this number.
-          </small>
+          <p className="mt-1 text-sm text-gray-500">
+            Enter your phone number to link with any existing customer accounts
+          </p>
         </div>
         
-        {status === 'error' && (
-          <div className="alert alert-danger" role="alert">
-            {message}
+        {message && (
+          <div className={`mb-4 p-2 rounded ${
+            message.type === 'success' ? 'bg-green-50 text-green-700' :
+            message.type === 'error' ? 'bg-red-50 text-red-700' :
+            'bg-blue-50 text-blue-700'
+          }`}>
+            {message.text}
           </div>
         )}
         
-        {status === 'success' && (
-          <div className="alert alert-success" role="alert">
-            {message}
-          </div>
-        )}
-        
-        <button 
-          type="submit" 
-          className="btn btn-primary" 
-          disabled={isSubmitting}
+        <button
+          type="submit"
+          disabled={isProcessing}
+          className={`w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 ${
+            isProcessing ? 'opacity-75 cursor-not-allowed' : ''
+          }`}
         >
-          {isSubmitting ? 'Updating...' : 'Update Phone Number'}
+          {isProcessing ? 'Processing...' : 'Update Phone Number'}
         </button>
       </form>
-      
-      {foundCustomerId && (
-        <div className="mt-3">
-          <p>
-            <strong>Success!</strong> Your account is now linked to your customer profile.
-            You can now view all coupons sent to your phone number.
-          </p>
-          <button 
-            onClick={() => window.location.href = '/customer/coupons'}
-            className="btn btn-outline-primary"
-          >
-            View My Coupons
-          </button>
-        </div>
-      )}
     </div>
   );
 };

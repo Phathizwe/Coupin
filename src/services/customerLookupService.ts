@@ -1,275 +1,129 @@
-import { 
-  collection, 
-  query, 
-  where, 
-  getDocs,
-  getDoc,
-  doc,
-  setDoc,
-  serverTimestamp,
-  DocumentData
-} from 'firebase/firestore';
-import { db } from '../config/firebase';
-import { Customer } from '../types';
-import { enrollCustomerInProgram } from './customerProgramService';
-
 /**
- * Normalize a phone number by removing non-digit characters
- * @param phoneNumber The phone number to normalize
- * @returns The normalized phone number
+ * Enhanced customer lookup service with multiple format attempts
  */
-export const normalizePhoneNumber = (phoneNumber: string): string => {
-  if (!phoneNumber) return '';
-  // Remove all non-digit characters
-  return phoneNumber.replace(/\D/g, '');
-};
+import { collection, query, where, getDocs, limit } from 'firebase/firestore';
+import { db } from '../config/firebase';
+import { normalizePhoneNumber, formatPhoneForDisplay } from '../utils/phoneUtils';
+
+// Re-export the phone utilities for backward compatibility
+export { normalizePhoneNumber, formatPhoneForDisplay };
 
 /**
- * Find a customer by phone number across the entire platform
- * @param phoneNumber The phone number to search for
+ * Customer record interface
+ */
+export interface CustomerRecord {
+  id: string;
+  phone: string;
+  name?: string;
+  email?: string;
+  businessId?: string;
+  userId?: string;
+  createdAt?: any;
+}
+
+/**
+ * Find a customer by phone number, handling various formats
+ * 
+ * @param phone The phone number to search for
  * @returns The customer data if found, null otherwise
  */
-export const findCustomerByPhone = async (phoneNumber: string) => {
-  try {
-    if (!phoneNumber) {
-      console.log('findCustomerByPhone called with empty phone number');
-      return null;
-    }
-    
-    console.log(`findCustomerByPhone: Searching for customer with phone ${phoneNumber}`);
-    
-    // Normalize the phone number by removing spaces, dashes, etc.
-    const normalizedPhone = normalizePhoneNumber(phoneNumber);
-    
-    if (!normalizedPhone) {
-      console.log('Phone number normalized to empty string');
-      return null;
-    }
-    
-    console.log(`findCustomerByPhone: Normalized phone number: ${normalizedPhone}`);
-    
-    // First check in users collection (platform users)
-    const usersRef = collection(db, 'users');
-    const usersQuery = query(
-      usersRef,
-      where('phoneNumber', '==', normalizedPhone),
-      where('role', '==', 'customer')
-    );
-    
-    const usersSnapshot = await getDocs(usersQuery);
-    
-    if (!usersSnapshot.empty) {
-      console.log(`findCustomerByPhone: Found user with phone ${normalizedPhone}`);
-      const userData = usersSnapshot.docs[0].data();
-      const userId = usersSnapshot.docs[0].id;
-      
-      // Check if this user is already linked to a customer in the business's customer list
-      return {
-        id: userId,
-        userId: userId,
-        firstName: userData.displayName?.split(' ')[0] || '',
-        lastName: userData.displayName?.split(' ').slice(1).join(' ') || '',
-        email: userData.email || '',
-        phone: normalizedPhone,
-        joinDate: userData.createdAt,
-        source: 'platform',
-        platformUser: true
-      };
-    }
-    
-    // If not found in users, check in customers collection with normalized phone
-    const customersRef = collection(db, 'customers');
-    const customersQuery = query(
-      customersRef,
-      where('phone', '==', normalizedPhone)
-    );
-    
-    console.log(`findCustomerByPhone: Searching customers collection with normalized phone: ${normalizedPhone}`);
-    const customersSnapshot = await getDocs(customersQuery);
-    
-    if (!customersSnapshot.empty) {
-      console.log(`findCustomerByPhone: Found customer with normalized phone ${normalizedPhone}`);
-      const customerData = customersSnapshot.docs[0].data();
-      return {
-        ...customerData,
-        id: customersSnapshot.docs[0].id,
-        platformUser: !!customerData.userId,
-        source: 'business'
-      };
-    }
-    
-    // Try with the original phone format as a fallback
-    console.log(`findCustomerByPhone: Trying original phone format: ${phoneNumber}`);
-    const fallbackQuery = query(
-      customersRef,
-      where('phone', '==', phoneNumber)
-    );
-    
-    const fallbackSnapshot = await getDocs(fallbackQuery);
-    
-    if (!fallbackSnapshot.empty) {
-      console.log(`findCustomerByPhone: Found customer with original phone format ${phoneNumber}`);
-      const customerData = fallbackSnapshot.docs[0].data();
-      return {
-        ...customerData,
-        id: fallbackSnapshot.docs[0].id,
-        platformUser: !!customerData.userId,
-        source: 'business'
-      };
-    }
-    
-    // Try with a partial match as a last resort
-    console.log(`findCustomerByPhone: Trying partial match for ${normalizedPhone}`);
-    // This query finds phone numbers that contain the normalized phone as a substring
-    // We'll do this client-side since Firestore doesn't support substring queries
-    const allCustomersQuery = query(customersRef);
-    const allCustomersSnapshot = await getDocs(allCustomersQuery);
-    
-    if (!allCustomersSnapshot.empty) {
-      // Define the type for matchingCustomers
-      const matchingCustomers: Array<DocumentData & { id: string; platformUser: boolean; source: string }> = [];
-      
-      allCustomersSnapshot.forEach(doc => {
-        const customerData = doc.data();
-        const customerPhone = normalizePhoneNumber(customerData.phone || '');
-        
-        // Check if either phone contains the other
-        if (customerPhone.includes(normalizedPhone) || normalizedPhone.includes(customerPhone)) {
-          matchingCustomers.push({
-            ...customerData,
-            id: doc.id,
-            platformUser: !!customerData.userId,
-            source: 'business'
-          });
-        }
-      });
-      
-      if (matchingCustomers.length > 0) {
-        console.log(`findCustomerByPhone: Found ${matchingCustomers.length} customers with partial phone match`);
-        // Return the first matching customer
-        return matchingCustomers[0];
-      }
-    }
-    
-    console.log(`findCustomerByPhone: No customer found with phone ${phoneNumber}`);
+export const findCustomerByPhone = async (phone: string): Promise<CustomerRecord | null> => {
+  if (!phone) {
+    console.log('❌ No phone number provided for customer lookup');
     return null;
-  } catch (error) {
-    console.error('Error finding customer by phone:', error);
-    console.error('Phone number that caused error:', phoneNumber);
-    throw error;
   }
-};
-
-/**
- * Get a customer's enrollment status in a business's loyalty programs
- * @param customerId The customer ID
- * @param businessId The business ID
- * @returns Array of program enrollments
- */
-export const getCustomerProgramStatus = async (customerId: string, businessId: string) => {
-  try {
-    // Get all loyalty programs for this business
-    const programsRef = collection(db, 'loyaltyPrograms');
-    const programsQuery = query(
-      programsRef,
-      where('businessId', '==', businessId),
-      where('active', '==', true)
-    );
+  
+  console.log('🔍 Starting customer lookup for phone:', phone);
+  
+  // Try multiple phone number formats
+  const phoneFormats = [
+    normalizePhoneNumber(phone),           // +27832091122
+    formatPhoneForDisplay(phone),          // 0832091122
+    phone,                                 // Original format
+    phone.replace(/\D/g, ''),             // Digits only
+  ];
+  
+  console.log('📞 Trying phone formats:', phoneFormats);
+  
+  for (const phoneFormat of phoneFormats) {
+    if (!phoneFormat) continue;
     
-    const programsSnapshot = await getDocs(programsQuery);
-    const programs = programsSnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    }));
-    
-    // Get customer enrollments in these programs
-    const enrollmentsRef = collection(db, 'customerPrograms');
-    const enrollmentsQuery = query(
-      enrollmentsRef,
-      where('customerId', '==', customerId),
-      where('businessId', '==', businessId)
-    );
-    
-    const enrollmentsSnapshot = await getDocs(enrollmentsQuery);
-    const enrollments = enrollmentsSnapshot.docs.map(doc => ({
-      id: doc.id,
-      programId: doc.data().programId,
-      status: doc.data().status,
-      ...doc.data()
-    }));
-    
-    // Combine program and enrollment data
-    return programs.map(program => {
-      const enrollment = enrollments.find(e => e.programId === program.id);
+    try {
+      console.log(`🔍 Searching for customer with phone: "${phoneFormat}"`);
+      const customersRef = collection(db, 'customers');
+      const q = query(
+        customersRef,
+        where('phone', '==', phoneFormat),
+        limit(1)
+      );
       
-      return {
-        program,
-        enrollment: enrollment || null,
-        isEnrolled: !!enrollment,
-        status: enrollment ? enrollment.status : 'not_enrolled'
-      };
-    });
-  } catch (error) {
-    console.error('Error getting customer program status:', error);
-    throw error;
+      const querySnapshot = await getDocs(q);
+      
+      if (!querySnapshot.empty) {
+        const doc = querySnapshot.docs[0];
+        const customerData = doc.data();
+        
+        const customer: CustomerRecord = {
+          id: doc.id,
+          phone: customerData.phone,
+          name: customerData.name,
+          email: customerData.email,
+          businessId: customerData.businessId,
+          userId: customerData.userId,
+          createdAt: customerData.createdAt,
+        };
+        
+        console.log('✅ Customer found:', customer);
+        return customer;
+      } else {
+        console.log(`ℹ️ No customer found with phone format: "${phoneFormat}"`);
+      }
+    } catch (error) {
+      console.error(`❌ Error searching with phone format "${phoneFormat}":`, error);
+      // Continue with next format
+    }
   }
+  
+  console.log('❌ No customer found with any phone format');
+  return null;
 };
 
 /**
- * Add a customer to a business's customer list
+ * Add a customer to a business
+ * 
  * @param businessId The business ID
  * @param customerData The customer data
- * @returns The created customer
+ * @returns The ID of the created customer
  */
-export const addCustomerToBusiness = async (businessId: string, customerData: any) => {
-  try {
-    // Normalize the phone number
-    const normalizedPhone = normalizePhoneNumber(customerData.phone || '');
-    
-    // Create a new customer document
-    const customersRef = collection(db, 'customers');
-    const newCustomerRef = doc(customersRef);
-    
-    const customer = {
-      businessId,
-      firstName: customerData.firstName,
-      lastName: customerData.lastName,
-      email: customerData.email,
-      phone: normalizedPhone, // Store the normalized phone number
-      originalPhone: customerData.phone, // Keep the original format for reference
-      joinDate: serverTimestamp(),
-      totalSpent: 0,
-      totalVisits: 0,
-      loyaltyPoints: 0,
-      userId: customerData.userId || null,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp()
-    };
-    
-    await setDoc(newCustomerRef, customer);
-    
-    return {
-      ...customer,
-      id: newCustomerRef.id
-    };
-  } catch (error) {
-    console.error('Error adding customer to business:', error);
-    throw error;
+export const addCustomerToBusiness = async (
+  businessId: string,
+  customerData: {
+    phone: string;
+    name?: string;
+    email?: string;
   }
+): Promise<string> => {
+  // This is now implemented in the customerLinkingService
+  // Re-export here for backward compatibility
+  const { addCustomerToBusiness: addCustomer } = require('./customerLinkingService');
+  return addCustomer(businessId, customerData);
 };
 
 /**
- * Enroll a customer in a loyalty program
+ * Enroll a customer in a program
+ * 
  * @param customerId The customer ID
  * @param businessId The business ID
  * @param programId The program ID
- * @returns The enrollment data
+ * @returns The ID of the created enrollment
  */
-export const enrollCustomer = async (customerId: string, businessId: string, programId: string) => {
-  try {
-    return await enrollCustomerInProgram(customerId, businessId, programId);
-  } catch (error) {
-    console.error('Error enrolling customer:', error);
-    throw error;
-  }
+export const enrollCustomer = async (
+  customerId: string,
+  businessId: string,
+  programId: string
+): Promise<string> => {
+  // This is now implemented in the customerLinkingService
+  // Re-export here for backward compatibility
+  const { enrollCustomer: enroll } = require('./customerLinkingService');
+  return enroll(customerId, businessId, programId);
 };

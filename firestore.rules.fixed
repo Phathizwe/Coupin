@@ -1,0 +1,47 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Users collection - users can read/write their own data
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Customers collection - simplified access
+    match /customers/{customerId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && (
+        // Allow creation during registration
+        !resource.exists() ||
+        // Allow updates by linked user
+        resource.data.userId == request.auth.uid ||
+        // Allow updates by business owner
+        hasBusinessAccess(resource.data.businessId)
+      );
+    }
+    
+    // Customer coupons - accessible by customer or business
+    match /customerCoupons/{couponId} {
+      allow read, write: if request.auth != null && (
+        resource.data.customerId == request.auth.uid ||
+        resource.data.userId == request.auth.uid ||
+        hasBusinessAccess(resource.data.businessId)
+      );
+    }
+    
+    // Coupon distributions - accessible by recipient or business
+    match /couponDistributions/{distributionId} {
+      allow read, write: if request.auth != null && (
+        resource.data.customerId == request.auth.uid ||
+        resource.data.userId == request.auth.uid ||
+        hasBusinessAccess(resource.data.businessId)
+      );
+    }
+    
+    // Helper function for business access
+    function hasBusinessAccess(businessId) {
+      return request.auth != null && 
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.businessId == businessId;
+    }
+  }
+}

@@ -1,7 +1,10 @@
+/**
+ * Hook for handling phone number normalization, validation, and customer linking
+ */
 import { useState, useEffect } from 'react';
 import { useAuth } from './useAuth';
-import { userPhoneService } from '../services/userPhoneService';
-import { registrationPhoneHandler } from '../utils/registrationPhoneHandler';
+import { normalizePhoneNumber } from '../utils/phoneUtils';
+import { customerAccountLinkingService } from '../services/customerAccountLinkingService';
 
 interface UsePhoneNumberHandlingOptions {
   initialPhoneNumber?: string;
@@ -21,96 +24,95 @@ interface UsePhoneNumberHandlingResult {
 }
 
 /**
- * Hook for handling phone number storage and customer linking
- * This hook combines the functionality of our various services and can be used
- * in both the registration flow and the profile page
+ * Hook for handling phone number operations
  */
 export const usePhoneNumberHandling = (
   options: UsePhoneNumberHandlingOptions = {}
 ): UsePhoneNumberHandlingResult => {
+  const { initialPhoneNumber = '', autoProcess = false } = options;
   const { user } = useAuth();
-  const [phoneNumber, setPhoneNumber] = useState(options.initialPhoneNumber || '');
+  
+  const [phoneNumber, setPhoneNumber] = useState(initialPhoneNumber);
+  const [normalizedPhone, setNormalizedPhone] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [isComplete, setIsComplete] = useState(false);
   const [status, setStatus] = useState<'idle' | 'processing' | 'success' | 'error'>('idle');
   const [message, setMessage] = useState('');
   const [linkedCustomerId, setLinkedCustomerId] = useState<string | null>(null);
 
-  // Pre-fill the phone number if the user already has one
+  // Normalize phone number whenever it changes
   useEffect(() => {
-    if (user?.phoneNumber && !phoneNumber) {
-      setPhoneNumber(user.phoneNumber);
+    if (phoneNumber) {
+      const normalized = normalizePhoneNumber(phoneNumber);
+      setNormalizedPhone(normalized);
+    } else {
+      setNormalizedPhone('');
     }
-  }, [user, phoneNumber]);
+  }, [phoneNumber]);
 
-  // Auto-process if requested
+  // Auto-process if enabled
   useEffect(() => {
-    if (options.autoProcess && user && phoneNumber && !isProcessing && !isComplete) {
+    if (autoProcess && normalizedPhone && !isProcessing && !isComplete && user) {
       processPhoneNumber();
     }
-  }, [user, phoneNumber, options.autoProcess, isProcessing, isComplete]);
+  }, [normalizedPhone, user, autoProcess]);
 
-  const processPhoneNumber = async (): Promise<boolean> => {
+  // Reset when user changes
+  useEffect(() => {
     if (!user) {
-      setStatus('error');
-      setMessage('You must be logged in to update your phone number.');
+      resetStatus();
+    }
+  }, [user]);
+
+  /**
+   * Process the current phone number to link with customer accounts
+   */
+  const processPhoneNumber = async (): Promise<boolean> => {
+    if (!user || !normalizedPhone || isProcessing) {
       return false;
     }
 
-    if (!phoneNumber.trim()) {
-      setStatus('error');
-      setMessage('Please enter a valid phone number.');
-      return false;
-    }
+    setIsProcessing(true);
+    setStatus('processing');
+    setMessage('Processing phone number...');
 
     try {
-      setIsProcessing(true);
-      setStatus('processing');
-      setMessage('Processing your phone number...');
-
-      // First, ensure the phone number is stored in the user record
-      const stored = await registrationPhoneHandler.ensurePhoneNumberStored(
+      // Attempt to link customer account
+      const customerId = await customerAccountLinkingService.updateUserPhoneAndLinkCustomer(
         user.uid,
-        phoneNumber
-      );
-
-      if (!stored) {
-        setStatus('error');
-        setMessage('Failed to store your phone number. Please try again later.');
-        return false;
-      }
-
-      // Then, try to find and link any matching customer records
-      const customerId = await userPhoneService.findAndLinkCustomerByPhone(
-        user.uid,
-        phoneNumber
+        normalizedPhone
       );
 
       if (customerId) {
-        setStatus('success');
-        setMessage('Your phone number has been updated and linked to your existing coupons!');
         setLinkedCustomerId(customerId);
+        setStatus('success');
+        setMessage('Successfully linked to existing customer account');
+        return true;
       } else {
         setStatus('success');
-        setMessage('Your phone number has been updated. No existing coupons were found for this number.');
+        setMessage('Phone number updated. No existing customer account found.');
+        return true;
       }
-
-      setIsComplete(true);
-      return true;
     } catch (error) {
       console.error('Error processing phone number:', error);
       setStatus('error');
-      setMessage('An error occurred while processing your phone number. Please try again later.');
+      setMessage('Failed to process phone number. Please try again.');
       return false;
     } finally {
       setIsProcessing(false);
+      setIsComplete(true);
     }
   };
 
+  /**
+   * Reset the status to idle
+   */
   const resetStatus = () => {
+    setIsProcessing(false);
+    setIsComplete(false);
     setStatus('idle');
     setMessage('');
-    setIsComplete(false);
+    setLinkedCustomerId(null);
   };
 
   return {
@@ -125,3 +127,5 @@ export const usePhoneNumberHandling = (
     resetStatus
   };
 };
+
+export default usePhoneNumberHandling;

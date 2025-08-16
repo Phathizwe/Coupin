@@ -1,89 +1,94 @@
-import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, getDocs, doc, updateDoc } from 'firebase/firestore';
-import { normalizePhoneNumber } from '../utils/phoneUtils';
-
-// Firebase configuration
-const firebaseConfig = {
-  apiKey: "AIzaSyB_px307ityLaMaEG-TqT-Ssz3CT-AhJ6Y",
-  authDomain: "coupin-f35d2.firebaseapp.com",
-  projectId: "coupin-f35d2",
-  storageBucket: "coupin-f35d2.appspot.com",
-  messagingSenderId: "757183919417",
-  appId: "1:757183919417:web:6c0146510173250129a4e8",
-  measurementId: "G-R0XYKGNZ9C"
-};
-
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
-const db = getFirestore(app);
-
 /**
  * Migration script to add normalized phone fields to existing customer records
  */
-export async function migrateCustomerPhoneNumbers() {
-  console.log('Starting phone number migration...');
-  const customersRef = collection(db, 'customers');
+import { collection, getDocs, doc, updateDoc, writeBatch } from 'firebase/firestore';
+import { db } from '../config/firebase';
+import { normalizePhoneNumber } from '../utils/phoneUtils';
+
+/**
+ * Migrate customer phone numbers to normalized format
+ */
+export const migrateCustomerPhoneNumbers = async (): Promise<void> => {
+  console.log('🔄 Starting phone number migration...');
   
   try {
+    // Get all customer records
+    const customersRef = collection(db, 'customers');
     const snapshot = await getDocs(customersRef);
-    console.log(`Found ${snapshot.docs.length} customer records to process`);
     
-    let updated = 0;
-    let skipped = 0;
-    let failed = 0;
+    if (snapshot.empty) {
+      console.log('ℹ️ No customers found to migrate');
+      return;
+    }
+    
+    console.log(`📋 Found ${snapshot.size} customer records to process`);
+    
+    // Use batched writes for efficiency
+    const batchSize = 500;
+    let batch = writeBatch(db);
+    let operationCount = 0;
+    let totalUpdated = 0;
     
     for (const customerDoc of snapshot.docs) {
       const customerData = customerDoc.data();
       
-      // Skip if no phone number or already has normalized field
-      if (!customerData.phone || customerData.phone_normalized) {
-        skipped++;
+      // Skip if no phone number
+      if (!customerData.phone) {
+        console.log(`⚠️ Customer ${customerDoc.id} has no phone number, skipping`);
         continue;
       }
       
-      try {
-        // Add normalized phone field
-        const normalizedPhone = normalizePhoneNumber(customerData.phone);
-        console.log(`Normalizing phone: ${customerData.phone} -> ${normalizedPhone}`);
-        
-        await updateDoc(doc(db, 'customers', customerDoc.id), {
-          phone_normalized: normalizedPhone
-        });
-        updated++;
-        
-        // Log progress every 10 documents
-        if (updated % 10 === 0) {
-          console.log(`Progress: ${updated} customers updated`);
-        }
-      } catch (error) {
-        console.error(`Failed to update customer ${customerDoc.id}:`, error);
-        failed++;
+      // Normalize the phone number
+      const originalPhone = customerData.phone;
+      const normalizedPhone = normalizePhoneNumber(originalPhone);
+      
+      // Skip if already normalized
+      if (originalPhone === normalizedPhone) {
+        console.log(`✅ Customer ${customerDoc.id} phone already normalized: ${normalizedPhone}`);
+        continue;
+      }
+      
+      console.log(`🔄 Normalizing ${customerDoc.id}: ${originalPhone} → ${normalizedPhone}`);
+      
+      // Add to batch
+      const customerRef = doc(db, 'customers', customerDoc.id);
+      batch.update(customerRef, { 
+        phone: normalizedPhone,
+        originalPhone: originalPhone, // Keep original for reference
+        updatedAt: new Date()
+      });
+      
+      operationCount++;
+      totalUpdated++;
+      
+      // Commit batch when it reaches the limit
+      if (operationCount >= batchSize) {
+        console.log(`🔄 Committing batch of ${operationCount} updates...`);
+        await batch.commit();
+        batch = writeBatch(db);
+        operationCount = 0;
       }
     }
     
-    console.log(`
-      Migration complete:
-      - ${updated} customers updated
-      - ${skipped} customers skipped (no phone or already normalized)
-      - ${failed} updates failed
-    `);
+    // Commit any remaining operations
+    if (operationCount > 0) {
+      console.log(`🔄 Committing final batch of ${operationCount} updates...`);
+      await batch.commit();
+    }
     
-    return { updated, skipped, failed };
+    console.log(`✅ Migration complete! Updated ${totalUpdated} customer records`);
   } catch (error) {
-    console.error('Error fetching customers:', error);
+    console.error('❌ Error during phone number migration:', error);
     throw error;
   }
-}
+};
 
-// Run the migration if this file is executed directly
+// Execute the migration if run directly
 if (require.main === module) {
   migrateCustomerPhoneNumbers()
-    .then(() => {
-      console.log('Migration completed successfully');
-      setTimeout(() => process.exit(0), 3000); // Give time for Firebase operations to complete
-    })
-    .catch(error => {
-      console.error('Migration failed:', error);
+    .then(() => process.exit(0))
+    .catch(err => {
+      console.error('Migration failed:', err);
       process.exit(1);
     });
 }

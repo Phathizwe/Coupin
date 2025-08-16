@@ -1,178 +1,17 @@
-import { 
-  collection, 
-  query, 
-  where, 
-  getDocs,
-  doc,
-  updateDoc,
-  serverTimestamp,
-  runTransaction,
-  getDoc,
-  setDoc,
-  DocumentData
-} from 'firebase/firestore';
+/**
+ * Comprehensive customer account linking service
+ * Integrates phone normalization, customer lookup, and user-customer linking
+ */
+import { collection, doc, setDoc, Timestamp, getDoc } from 'firebase/firestore';
 import { db } from '../config/firebase';
+import { normalizePhoneNumber } from '../utils/phoneUtils';
+import { findCustomerByPhone as findCustomer } from './customerLookupService';
+import { linkCustomerToUser, linkUserToCustomer as linkUser } from './customerLinkingService';
 
 /**
- * Service for linking customer accounts with user logins based on phone number
+ * Service for managing customer-user account linking
  */
 export class CustomerAccountLinkingService {
-  /**
-   * Normalize a phone number by removing all non-digit characters
-   * Handles various formats like:
-   * - 0832091122
-   * - 083 209 1122
-   * - +27832091122
-   * - (083) 209 1122
-   * - 0027832091122
-   * 
-   * @param phone The phone number to normalize
-   * @returns The normalized phone number (digits only)
-   */
-  normalizePhoneNumber(phone: string): string {
-    if (!phone) return '';
-    
-    // Remove all non-digit characters
-    return phone.replace(/\D/g, '');
-  }
-
-  /**
-   * Find a customer by phone number, handling various formats
-   * 
-   * @param phone The phone number to search for
-   * @returns The customer data if found, null otherwise
-   */
-  async findCustomerByPhone(phone: string): Promise<any | null> {
-    try {
-      if (!phone) {
-        console.log('[CustomerAccountLinkingService] findCustomerByPhone called with empty phone number');
-        return null;
-      }
-      
-      // Normalize the input phone number
-      const normalizedPhone = this.normalizePhoneNumber(phone);
-      
-      if (!normalizedPhone) {
-        console.log('[CustomerAccountLinkingService] Phone number normalized to empty string');
-        return null;
-      }
-      
-      console.log(`[CustomerAccountLinkingService] Finding customer with normalized phone: ${normalizedPhone}`);
-      
-      // Try with the normalized phone number
-      const customersRef = collection(db, 'customers');
-      const phoneQuery = query(
-        customersRef,
-        where('phone', '==', normalizedPhone)
-      );
-      
-      const phoneSnapshot = await getDocs(phoneQuery);
-      
-      if (!phoneSnapshot.empty) {
-        console.log(`[CustomerAccountLinkingService] Found customer with phone ${normalizedPhone}`);
-        const customerData = phoneSnapshot.docs[0].data();
-        return {
-          ...customerData,
-          id: phoneSnapshot.docs[0].id
-        };
-      }
-      
-      // Try with the original phone format as a fallback
-      const originalPhoneQuery = query(
-        customersRef,
-        where('phone', '==', phone)
-      );
-      
-      const originalPhoneSnapshot = await getDocs(originalPhoneQuery);
-      
-      if (!originalPhoneSnapshot.empty) {
-        console.log(`[CustomerAccountLinkingService] Found customer with original phone format ${phone}`);
-        const customerData = originalPhoneSnapshot.docs[0].data();
-        return {
-          ...customerData,
-          id: originalPhoneSnapshot.docs[0].id
-        };
-      }
-      
-      // Try with normalized_phone field if it exists
-      const normalizedPhoneQuery = query(
-        customersRef,
-        where('phone_normalized', '==', normalizedPhone)
-      );
-      
-      const normalizedPhoneSnapshot = await getDocs(normalizedPhoneQuery);
-      
-      if (!normalizedPhoneSnapshot.empty) {
-        console.log(`[CustomerAccountLinkingService] Found customer with normalized_phone ${normalizedPhone}`);
-        const customerData = normalizedPhoneSnapshot.docs[0].data();
-        return {
-          ...customerData,
-          id: normalizedPhoneSnapshot.docs[0].id
-        };
-    }
-      
-      console.log(`[CustomerAccountLinkingService] No customer found with phone ${phone}`);
-      return null;
-    } catch (error) {
-      console.error('[CustomerAccountLinkingService] Error finding customer by phone:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Link a user account to a customer record
-   * 
-   * @param userId The user ID to link
-   * @param customerId The customer ID to link to
-   * @returns True if successful, false otherwise
-   */
-  async linkUserToCustomer(userId: string, customerId: string): Promise<boolean> {
-    try {
-      console.log(`[CustomerAccountLinkingService] Linking user ${userId} to customer ${customerId}`);
-      
-      return await runTransaction(db, async (transaction) => {
-        // Check if the customer exists
-        const customerRef = doc(db, 'customers', customerId);
-        const customerDoc = await transaction.get(customerRef);
-        
-        if (!customerDoc.exists()) {
-          console.error(`[CustomerAccountLinkingService] Customer ${customerId} does not exist`);
-          return false;
-}
-
-        // Check if the customer is already linked to a different user
-        const customerData = customerDoc.data();
-        if (customerData.userId && customerData.userId !== userId) {
-          console.warn(`[CustomerAccountLinkingService] Customer ${customerId} is already linked to user ${customerData.userId}`);
-          return false;
-        }
-        
-        // Update the customer record with the user ID
-        transaction.update(customerRef, {
-          userId: userId,
-          updatedAt: serverTimestamp()
-        });
-        
-        // Also update the user record with the linked customer ID
-        const userRef = doc(db, 'users', userId);
-        const userDoc = await transaction.get(userRef);
-        
-        if (userDoc.exists()) {
-          transaction.update(userRef, {
-            linkedCustomerId: customerId,
-            updatedAt: serverTimestamp()
-          });
-        }
-        
-        console.log(`[CustomerAccountLinkingService] Successfully linked user ${userId} to customer ${customerId}`);
-        return true;
-      });
-    } catch (error) {
-      console.error('[CustomerAccountLinkingService] Error linking user to customer:', error);
-      return false;
-    }
-  }
-
   /**
    * Process a new user registration and link to existing customer if found
    * 
@@ -182,112 +21,177 @@ export class CustomerAccountLinkingService {
    * @param name The user's name
    * @returns The linked customer ID if found and linked, null otherwise
    */
-  async processUserRegistration(userId: string, phone: string, email: string, name: string): Promise<string | null> {
+  async processUserRegistration(
+    userId: string, 
+    phone: string, 
+    email: string, 
+    name: string
+  ): Promise<string | null> {
+    if (!phone) {
+      console.log('⚠️ No phone number provided for customer linking');
+      return null;
+    }
+    
+    console.log('🔄 Processing user registration for linking', { userId, phone });
+    
     try {
-      if (!phone) {
-        console.log('[CustomerAccountLinkingService] No phone number provided for user registration');
-        return null;
-      }
+      // Step 1: Find existing customer by phone
+      const normalizedPhone = normalizePhoneNumber(phone);
+      const existingCustomer = await this.findCustomerByPhone(normalizedPhone);
       
-      console.log(`[CustomerAccountLinkingService] Processing registration for user ${userId} with phone ${phone}`);
-      
-      // Use transaction for atomicity
-      return await runTransaction(db, async (transaction) => {
-        // Find customer by phone number
-        const customer = await this.findCustomerByPhone(phone);
+      if (existingCustomer) {
+        console.log('✅ Found existing customer to link:', existingCustomer.id);
         
-        if (customer) {
-          console.log(`[CustomerAccountLinkingService] Found existing customer with phone ${phone}: ${customer.id}`);
-          
-          // Check if customer already has a userId
-          if (customer.userId) {
-            console.log(`[CustomerAccountLinkingService] Customer already has userId: ${customer.userId}`);
-            
-            if (customer.userId === userId) {
-              console.log('[CustomerAccountLinkingService] Customer already linked to this user');
-              return customer.id;
-            } else {
-              console.warn('[CustomerAccountLinkingService] Customer already linked to different user');
-              return null;
-            }
-          }
-          
-          // Update customer with user ID
-          const customerRef = doc(db, 'customers', customer.id);
-          transaction.update(customerRef, {
-            userId: userId,
-            email: email, // Update email to match user account
-            updatedAt: serverTimestamp()
-          });
-          
-          // Update user with customer ID
-          const userRef = doc(db, 'users', userId);
-          const userDoc = await transaction.get(userRef);
-          
-          if (userDoc.exists()) {
-            transaction.update(userRef, {
-              linkedCustomerId: customer.id,
-              updatedAt: serverTimestamp()
-            });
-          }
-          
-          console.log(`[CustomerAccountLinkingService] Linked user ${userId} to customer ${customer.id}`);
-          return customer.id;
-        } else {
-          // Create a new customer record
-          console.log('[CustomerAccountLinkingService] No existing customer found, creating new customer record');
-          
-          const nameParts = name.split(' ');
-          const firstName = nameParts[0];
-          const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : '';
-          
-          const normalizedPhone = this.normalizePhoneNumber(phone);
-          
-          const customerData = {
-            firstName,
-            lastName,
-            email: email,
-            phone: phone,
-            phone_normalized: normalizedPhone,
-            userId: userId,
-            joinDate: serverTimestamp(),
-            createdAt: serverTimestamp()
-          };
-          
-          const newCustomerRef = doc(collection(db, 'customers'));
-          transaction.set(newCustomerRef, customerData);
-          
-          // Update user with customer ID
-          const userRef = doc(db, 'users', userId);
-          const userDoc = await transaction.get(userRef);
-          
-          if (userDoc.exists()) {
-            transaction.update(userRef, {
-              linkedCustomerId: newCustomerRef.id,
-              updatedAt: serverTimestamp()
-            });
-          }
-          
-          console.log(`[CustomerAccountLinkingService] Created new customer record: ${newCustomerRef.id}`);
-          return newCustomerRef.id;
-        }
-      });
+        // Step 2: Link customer to user
+        await this.linkUserToCustomer(userId, existingCustomer.id);
+        
+        // Step 3: Update user record with customer ID
+        await this.updateUserWithCustomerId(userId, existingCustomer.id);
+        
+        return existingCustomer.id;
+      } else {
+        console.log('ℹ️ No existing customer found, creating new customer record');
+        
+        // Create new customer record
+        const newCustomerId = await this.createNewCustomer(userId, {
+          phone: normalizedPhone,
+          email,
+          name
+        });
+        
+        // Update user record with new customer ID
+        await this.updateUserWithCustomerId(userId, newCustomerId);
+        
+        return newCustomerId;
+      }
     } catch (error) {
-      console.error('[CustomerAccountLinkingService] Error processing user registration:', error);
+      console.error('❌ Error in processUserRegistration:', error);
       return null;
     }
   }
+  
+  /**
+   * Update a user's phone number and link to any existing customer records
+   * 
+   * @param userId The user ID
+   * @param phone The new phone number
+   * @returns The linked customer ID if found and linked, null otherwise
+   */
+  async updateUserPhoneAndLinkCustomer(
+    userId: string,
+    phone: string
+  ): Promise<string | null> {
+    if (!phone) return null;
+    
+    console.log('🔄 Updating user phone and checking for customer linking', { userId, phone });
+    
+    try {
+      const normalizedPhone = normalizePhoneNumber(phone);
+      
+      // Update user's phone number
+      const userRef = doc(db, 'users', userId);
+      await setDoc(userRef, {
+        phoneNumber: normalizedPhone,
+        updatedAt: Timestamp.now()
+      }, { merge: true });
+      
+      // Look for existing customer with this phone
+      const existingCustomer = await this.findCustomerByPhone(normalizedPhone);
+      
+      if (existingCustomer) {
+        console.log('✅ Found existing customer to link:', existingCustomer.id);
+        
+        // Link customer to user
+        await this.linkUserToCustomer(userId, existingCustomer.id);
+        
+        // Update user record with customer ID
+        await this.updateUserWithCustomerId(userId, existingCustomer.id);
+        
+        return existingCustomer.id;
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('❌ Error in updateUserPhoneAndLinkCustomer:', error);
+      return null;
+    }
+  }
+  
+  /**
+   * Find a customer by phone number
+   * Wrapper for the findCustomerByPhone function in customerLookupService
+   * 
+   * @param phone The phone number to search for
+   * @returns The customer data if found, null otherwise
+   */
+  async findCustomerByPhone(phone: string) {
+    return findCustomer(phone);
+  }
+  
+  /**
+   * Link a user to a customer record
+   * Wrapper for the linkUserToCustomer function in customerLinkingService
+   * 
+   * @param userId The user ID to link
+   * @param customerId The customer ID to link to
+   * @returns Promise that resolves to true if successful, false otherwise
+   */
+  async linkUserToCustomer(userId: string, customerId: string) {
+    return linkUser(userId, customerId);
+  }
+  
+  /**
+   * Create a new customer record
+   * 
+   * @param userId The user ID to associate with the customer
+   * @param customerData The customer data
+   * @returns The ID of the created customer
+   */
+  private async createNewCustomer(
+    userId: string, 
+    customerData: { 
+      phone: string; 
+      email?: string; 
+      name?: string;
+    }
+  ): Promise<string> {
+    const customersRef = collection(db, 'customers');
+    const newCustomerRef = doc(customersRef);
+    
+    const newCustomer = {
+      id: newCustomerRef.id,
+      userId,
+      phone: customerData.phone,
+      email: customerData.email || null,
+      name: customerData.name || null,
+      createdAt: Timestamp.now(),
+      updatedAt: Timestamp.now(),
+      linkedAt: Timestamp.now()
+    };
+    
+    await setDoc(newCustomerRef, newCustomer);
+    console.log('✅ Created new customer record:', newCustomerRef.id);
+    
+    return newCustomerRef.id;
+  }
+  
+  /**
+   * Update user record with linked customer ID
+   * 
+   * @param userId The user ID to update
+   * @param customerId The customer ID to link
+   */
+  private async updateUserWithCustomerId(userId: string, customerId: string): Promise<void> {
+    const userRef = doc(db, 'users', userId);
+    
+    await setDoc(userRef, {
+      linkedCustomerId: customerId,
+      updatedAt: Timestamp.now()
+    }, { merge: true });
+    
+    console.log('✅ Updated user record with linkedCustomerId:', customerId);
+  }
 }
 
-// Export a singleton instance
+// Export singleton instance
 export const customerAccountLinkingService = new CustomerAccountLinkingService();
-
-// Export the findCustomerByPhone function for backward compatibility
-export const findCustomerByPhone = (phone: string) => {
-  return customerAccountLinkingService.findCustomerByPhone(phone);
-};
-
-// Export the linkUserToCustomer function for backward compatibility
-export const linkUserToCustomer = (userId: string, customerId: string) => {
-  return customerAccountLinkingService.linkUserToCustomer(userId, customerId);
-};
