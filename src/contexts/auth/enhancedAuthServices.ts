@@ -19,37 +19,21 @@ import {
   query,
   where,
   getDocs,
-  serverTimestamp
+  serverTimestamp,
+  runTransaction
 } from 'firebase/firestore';
 import { auth, db } from '../../config/firebase';
 import { ExtendedUser } from './types';
 import { BusinessProfile } from '../../types';
-import { customerAccountLinkingService } from '../../services/customerAccountLinkingService';
+import { findCustomerByPhone } from '../../services/customerLookupService';
 
-// Login with email and password
-export const loginWithEmail = async (email: string, password: string): Promise<ExtendedUser> => {
-  try {
-    const userCredential = await signInWithEmailAndPassword(auth, email, password);
-    const extendedUser = await handleUserData(userCredential.user);
-
-    if (!extendedUser) {
-      throw new Error('Failed to load user data');
-    }
-
-    return extendedUser;
-  } catch (error: any) {
-    console.error('Login error:', error);
-    throw error;
-  }
-};
-
-// Register with email and password
+// Enhanced registration with robust customer-user linking
 export const registerUser = async (
   email: string,
   password: string,
   name: string,
   role: 'business' | 'customer',
-  phone?: string // Add phone parameter
+  phone?: string
 ): Promise<ExtendedUser> => {
   try {
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
@@ -71,7 +55,7 @@ export const registerUser = async (
       userData.phoneNumber = phone;
     }
 
-    // If role is business, create a business document
+    // Handle business registration
     if (role === 'business') {
       console.log('[authServices] Creating business document for business user');
 
@@ -97,50 +81,71 @@ export const registerUser = async (
       userData.businesses = [businessId];
       userData.currentBusinessId = businessId;
     } 
-    // If role is customer and phone is provided, link to existing customer record if found
+    // Enhanced customer registration with robust linking
     else if (role === 'customer' && phone) {
-      console.log('[authServices] Customer registration with phone:', phone);
+      console.log('[authServices] Processing customer registration with phone:', phone);
       
-      // Use the customer account linking service to find and link to existing customer
-      const linkedCustomerId = await customerAccountLinkingService.processUserRegistration(
-        user.uid, 
-        phone, 
-        email, 
-        name
-      );
-      
-      if (linkedCustomerId) {
-        console.log('[authServices] Linked user to existing customer:', linkedCustomerId);
-        userData.linkedCustomerId = linkedCustomerId;
-      } else {
-        console.log('[authServices] No existing customer found, creating new customer record');
+      try {
+        // Use transaction to ensure data consistency
+        await runTransaction(db, async (transaction) => {
+          // Check if a customer with this phone already exists
+          const existingCustomer = await findCustomerByPhone(phone);
+          
+          if (existingCustomer) {
+            console.log('[authServices] Found existing customer:', existingCustomer.id);
+            
+            // Verify the customer doesn't already have a userId
+            if (!existingCustomer.userId) {
+              console.log('[authServices] Linking user to existing customer');
+              
+              // Update customer with user ID using transaction
+              const customerRef = doc(db, 'customers', existingCustomer.id);
+              transaction.update(customerRef, { 
+                userId: user.uid,
+                email: email, // Update email to match user account
+                updatedAt: serverTimestamp()
+              });
+              
+              console.log('[authServices] Successfully linked user to customer');
+            } else {
+              console.log('[authServices] Customer already has userId:', existingCustomer.userId);
+              
+              // Check if the existing userId matches current user
+              if (existingCustomer.userId !== user.uid) {
+                throw new Error('Phone number already associated with another account');
+              }
+            }
+          } else {
+            console.log('[authServices] No existing customer found, creating new customer record');
+            
+            // Create a new customer record
+            const nameParts = name.split(' ');
+            const firstName = nameParts[0];
+            const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : '';
+            
+            const customerData = {
+              firstName,
+              lastName,
+              email: email,
+              phone: phone,
+              phone_normalized: phone.replace(/\D/g, ''), // Store normalized version
+              userId: user.uid,
+              joinDate: serverTimestamp(),
+              createdAt: serverTimestamp()
+            };
+            
+            const newCustomerRef = doc(collection(db, 'customers'));
+            transaction.set(newCustomerRef, customerData);
+            
+            console.log('[authServices] Created new customer record:', newCustomerRef.id);
+          }
+        });
         
-        // Create a new customer record
-        const nameParts = name.split(' ');
-        const firstName = nameParts[0];
-        const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : '';
-        
-        // Normalize the phone number
-        const normalizedPhone = customerAccountLinkingService.normalizePhoneNumber(phone);
-        
-        // Create a customer record without a business ID (will be linked later)
-        const customerData = {
-          firstName,
-          lastName,
-          email: email,
-          phone: phone,
-          phone_normalized: normalizedPhone,
-          userId: user.uid,
-          joinDate: serverTimestamp(),
-          createdAt: serverTimestamp()
-        };
-        
-        const customersRef = collection(db, 'customers');
-        const newCustomerRef = doc(customersRef);
-        await setDoc(newCustomerRef, customerData);
-        
-        console.log('[authServices] Created new customer record:', newCustomerRef.id);
-        userData.linkedCustomerId = newCustomerRef.id;
+        console.log('[authServices] Customer linking transaction completed successfully');
+      } catch (linkingError) {
+        console.error('[authServices] Customer linking failed:', linkingError);
+        // Don't fail the entire registration, but log the issue
+        console.warn('[authServices] Continuing with user creation despite linking failure');
       }
     }
 
@@ -156,6 +161,23 @@ export const registerUser = async (
     return extendedUser;
   } catch (error: any) {
     console.error('Registration error:', error);
+    throw error;
+  }
+};
+
+// Login with email and password
+export const loginWithEmail = async (email: string, password: string): Promise<ExtendedUser> => {
+  try {
+    const userCredential = await signInWithEmailAndPassword(auth, email, password);
+    const extendedUser = await handleUserData(userCredential.user);
+
+    if (!extendedUser) {
+      throw new Error('Failed to load user data');
+    }
+
+    return extendedUser;
+  } catch (error: any) {
+    console.error('Login error:', error);
     throw error;
   }
 };
@@ -334,7 +356,7 @@ export const handleUserData = async (firebaseUser: FirebaseUser): Promise<Extend
 
   try {
     console.log('[handleUserData] Processing user data for:', firebaseUser.uid);
-    
+
     const userDocRef = doc(db, 'users', firebaseUser.uid);
     const userDoc = await getDoc(userDocRef);
 
@@ -356,7 +378,6 @@ export const handleUserData = async (firebaseUser: FirebaseUser): Promise<Extend
       extendedUser.businessId = docData.businessId || undefined;
       extendedUser.businesses = docData.businesses || [];
       extendedUser.currentBusinessId = docData.currentBusinessId || docData.businessId || undefined;
-      extendedUser.linkedCustomerId = docData.linkedCustomerId;
       
       // Add phone number if it exists
       if (docData.phoneNumber) {
@@ -416,7 +437,7 @@ export const handleUserData = async (firebaseUser: FirebaseUser): Promise<Extend
       }
     } else {
       // User document doesn't exist, create one
-      const role = 'customer'; // Default for new users
+      const role = 'customer'; // Default for Google sign-in users
 
       const userData: any = {
         uid: firebaseUser.uid,
@@ -479,12 +500,6 @@ export const handleUserData = async (firebaseUser: FirebaseUser): Promise<Extend
           subscriptionStatus: 'active'
         };
       }
-    }
-
-    // Final validation before returning
-    if (!extendedUser.uid) {
-      console.error('[handleUserData] CRITICAL: Extended user missing UID!');
-      return null;
     }
 
     return extendedUser;

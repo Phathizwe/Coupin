@@ -6,7 +6,10 @@ import {
   doc,
   updateDoc,
   serverTimestamp,
-  getDoc
+  runTransaction,
+  getDoc,
+  setDoc,
+  DocumentData
 } from 'firebase/firestore';
 import { db } from '../config/firebase';
 
@@ -42,7 +45,7 @@ export class CustomerAccountLinkingService {
   async findCustomerByPhone(phone: string): Promise<any | null> {
     try {
       if (!phone) {
-        console.log('findCustomerByPhone called with empty phone number');
+        console.log('[CustomerAccountLinkingService] findCustomerByPhone called with empty phone number');
         return null;
       }
       
@@ -50,91 +53,68 @@ export class CustomerAccountLinkingService {
       const normalizedPhone = this.normalizePhoneNumber(phone);
       
       if (!normalizedPhone) {
-        console.log('Phone number normalized to empty string');
+        console.log('[CustomerAccountLinkingService] Phone number normalized to empty string');
         return null;
       }
       
-      console.log(`Finding customer with normalized phone: ${normalizedPhone}`);
+      console.log(`[CustomerAccountLinkingService] Finding customer with normalized phone: ${normalizedPhone}`);
       
-      // First try with the normalized phone number
+      // Try with the normalized phone number
       const customersRef = collection(db, 'customers');
+      const phoneQuery = query(
+        customersRef,
+        where('phone', '==', normalizedPhone)
+      );
       
-      // Try with normalized_phone field first (if it exists from migration)
-      const normalizedQuery = query(
+      const phoneSnapshot = await getDocs(phoneQuery);
+      
+      if (!phoneSnapshot.empty) {
+        console.log(`[CustomerAccountLinkingService] Found customer with phone ${normalizedPhone}`);
+        const customerData = phoneSnapshot.docs[0].data();
+        return {
+          ...customerData,
+          id: phoneSnapshot.docs[0].id
+        };
+      }
+      
+      // Try with the original phone format as a fallback
+      const originalPhoneQuery = query(
+        customersRef,
+        where('phone', '==', phone)
+      );
+      
+      const originalPhoneSnapshot = await getDocs(originalPhoneQuery);
+      
+      if (!originalPhoneSnapshot.empty) {
+        console.log(`[CustomerAccountLinkingService] Found customer with original phone format ${phone}`);
+        const customerData = originalPhoneSnapshot.docs[0].data();
+        return {
+          ...customerData,
+          id: originalPhoneSnapshot.docs[0].id
+        };
+      }
+      
+      // Try with normalized_phone field if it exists
+      const normalizedPhoneQuery = query(
         customersRef,
         where('phone_normalized', '==', normalizedPhone)
       );
       
-      let customersSnapshot = await getDocs(normalizedQuery);
+      const normalizedPhoneSnapshot = await getDocs(normalizedPhoneQuery);
       
-      // If not found, try with the phone field
-      if (customersSnapshot.empty) {
-        const phoneQuery = query(
-          customersRef,
-          where('phone', '==', normalizedPhone)
-        );
-        
-        customersSnapshot = await getDocs(phoneQuery);
-      }
-      
-      // If still not found, try with the original phone format
-      if (customersSnapshot.empty) {
-        const originalQuery = query(
-          customersRef,
-          where('phone', '==', phone)
-        );
-        
-        customersSnapshot = await getDocs(originalQuery);
-      }
-      
-      // If we found a match, return the first customer
-      if (!customersSnapshot.empty) {
-        const customerData = customersSnapshot.docs[0].data();
+      if (!normalizedPhoneSnapshot.empty) {
+        console.log(`[CustomerAccountLinkingService] Found customer with normalized_phone ${normalizedPhone}`);
+        const customerData = normalizedPhoneSnapshot.docs[0].data();
         return {
           ...customerData,
-          id: customersSnapshot.docs[0].id
+          id: normalizedPhoneSnapshot.docs[0].id
         };
-      }
+    }
       
-      // If still not found, try a more flexible approach by querying all customers
-      // and comparing normalized phone numbers (this is more expensive but handles edge cases)
-      const allCustomersQuery = query(customersRef);
-      const allCustomersSnapshot = await getDocs(allCustomersQuery);
-      
-      if (!allCustomersSnapshot.empty) {
-        for (const doc of allCustomersSnapshot.docs) {
-          const customerData = doc.data();
-          const customerPhone = this.normalizePhoneNumber(customerData.phone || '');
-          
-          // If the normalized phone numbers match
-          if (customerPhone && customerPhone === normalizedPhone) {
-            return {
-              ...customerData,
-              id: doc.id
-            };
-          }
-          
-          // Check for numbers that might have country code differences
-          // For example, +27832091122 vs 0832091122 (South African format)
-          // This handles cases where one number has country code and the other doesn't
-          if (customerPhone && (
-              (customerPhone.startsWith('27') && normalizedPhone.startsWith('0') && 
-               customerPhone.substring(2) === normalizedPhone.substring(1)) ||
-              (normalizedPhone.startsWith('27') && customerPhone.startsWith('0') && 
-               normalizedPhone.substring(2) === customerPhone.substring(1))
-          )) {
-            return {
-              ...customerData,
-              id: doc.id
-            };
-          }
-        }
-      }
-      
-      console.log(`No customer found with phone ${phone}`);
+      console.log(`[CustomerAccountLinkingService] No customer found with phone ${phone}`);
       return null;
     } catch (error) {
-      console.error('Error finding customer by phone:', error);
+      console.error('[CustomerAccountLinkingService] Error finding customer by phone:', error);
       throw error;
     }
   }
@@ -148,32 +128,47 @@ export class CustomerAccountLinkingService {
    */
   async linkUserToCustomer(userId: string, customerId: string): Promise<boolean> {
     try {
-      // Check if the customer exists
-      const customerRef = doc(db, 'customers', customerId);
-      const customerDoc = await getDoc(customerRef);
+      console.log(`[CustomerAccountLinkingService] Linking user ${userId} to customer ${customerId}`);
       
-      if (!customerDoc.exists()) {
-        console.error(`Customer ${customerId} does not exist`);
-        return false;
-      }
-      
-      // Check if the customer is already linked to a different user
-      const customerData = customerDoc.data();
-      if (customerData.userId && customerData.userId !== userId) {
-        console.warn(`Customer ${customerId} is already linked to user ${customerData.userId}`);
-        // You may want to handle this case differently depending on your requirements
-      }
-      
-      // Update the customer record with the user ID
-      await updateDoc(customerRef, {
-        userId: userId,
-        updatedAt: serverTimestamp()
+      return await runTransaction(db, async (transaction) => {
+        // Check if the customer exists
+        const customerRef = doc(db, 'customers', customerId);
+        const customerDoc = await transaction.get(customerRef);
+        
+        if (!customerDoc.exists()) {
+          console.error(`[CustomerAccountLinkingService] Customer ${customerId} does not exist`);
+          return false;
+}
+
+        // Check if the customer is already linked to a different user
+        const customerData = customerDoc.data();
+        if (customerData.userId && customerData.userId !== userId) {
+          console.warn(`[CustomerAccountLinkingService] Customer ${customerId} is already linked to user ${customerData.userId}`);
+          return false;
+        }
+        
+        // Update the customer record with the user ID
+        transaction.update(customerRef, {
+          userId: userId,
+          updatedAt: serverTimestamp()
+        });
+        
+        // Also update the user record with the linked customer ID
+        const userRef = doc(db, 'users', userId);
+        const userDoc = await transaction.get(userRef);
+        
+        if (userDoc.exists()) {
+          transaction.update(userRef, {
+            linkedCustomerId: customerId,
+            updatedAt: serverTimestamp()
+          });
+        }
+        
+        console.log(`[CustomerAccountLinkingService] Successfully linked user ${userId} to customer ${customerId}`);
+        return true;
       });
-      
-      console.log(`Linked user ${userId} to customer ${customerId}`);
-      return true;
     } catch (error) {
-      console.error('Error linking user to customer:', error);
+      console.error('[CustomerAccountLinkingService] Error linking user to customer:', error);
       return false;
     }
   }
@@ -190,28 +185,95 @@ export class CustomerAccountLinkingService {
   async processUserRegistration(userId: string, phone: string, email: string, name: string): Promise<string | null> {
     try {
       if (!phone) {
-        console.log('No phone number provided for user registration');
+        console.log('[CustomerAccountLinkingService] No phone number provided for user registration');
         return null;
       }
       
-      // Find customer by phone number
-      const customer = await this.findCustomerByPhone(phone);
+      console.log(`[CustomerAccountLinkingService] Processing registration for user ${userId} with phone ${phone}`);
       
-      if (customer) {
-        console.log(`Found existing customer with phone ${phone}: ${customer.id}`);
+      // Use transaction for atomicity
+      return await runTransaction(db, async (transaction) => {
+        // Find customer by phone number
+        const customer = await this.findCustomerByPhone(phone);
         
-        // Link the user to the customer
-        const linked = await this.linkUserToCustomer(userId, customer.id);
-        
-        if (linked) {
+        if (customer) {
+          console.log(`[CustomerAccountLinkingService] Found existing customer with phone ${phone}: ${customer.id}`);
+          
+          // Check if customer already has a userId
+          if (customer.userId) {
+            console.log(`[CustomerAccountLinkingService] Customer already has userId: ${customer.userId}`);
+            
+            if (customer.userId === userId) {
+              console.log('[CustomerAccountLinkingService] Customer already linked to this user');
+              return customer.id;
+            } else {
+              console.warn('[CustomerAccountLinkingService] Customer already linked to different user');
+              return null;
+            }
+          }
+          
+          // Update customer with user ID
+          const customerRef = doc(db, 'customers', customer.id);
+          transaction.update(customerRef, {
+            userId: userId,
+            email: email, // Update email to match user account
+            updatedAt: serverTimestamp()
+          });
+          
+          // Update user with customer ID
+          const userRef = doc(db, 'users', userId);
+          const userDoc = await transaction.get(userRef);
+          
+          if (userDoc.exists()) {
+            transaction.update(userRef, {
+              linkedCustomerId: customer.id,
+              updatedAt: serverTimestamp()
+            });
+          }
+          
+          console.log(`[CustomerAccountLinkingService] Linked user ${userId} to customer ${customer.id}`);
           return customer.id;
+        } else {
+          // Create a new customer record
+          console.log('[CustomerAccountLinkingService] No existing customer found, creating new customer record');
+          
+          const nameParts = name.split(' ');
+          const firstName = nameParts[0];
+          const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : '';
+          
+          const normalizedPhone = this.normalizePhoneNumber(phone);
+          
+          const customerData = {
+            firstName,
+            lastName,
+            email: email,
+            phone: phone,
+            phone_normalized: normalizedPhone,
+            userId: userId,
+            joinDate: serverTimestamp(),
+            createdAt: serverTimestamp()
+          };
+          
+          const newCustomerRef = doc(collection(db, 'customers'));
+          transaction.set(newCustomerRef, customerData);
+          
+          // Update user with customer ID
+          const userRef = doc(db, 'users', userId);
+          const userDoc = await transaction.get(userRef);
+          
+          if (userDoc.exists()) {
+            transaction.update(userRef, {
+              linkedCustomerId: newCustomerRef.id,
+              updatedAt: serverTimestamp()
+            });
+          }
+          
+          console.log(`[CustomerAccountLinkingService] Created new customer record: ${newCustomerRef.id}`);
+          return newCustomerRef.id;
         }
-      }
-      
-      // No customer found or linking failed
-      return null;
+      });
     } catch (error) {
-      console.error('Error processing user registration:', error);
+      console.error('[CustomerAccountLinkingService] Error processing user registration:', error);
       return null;
     }
   }
@@ -219,3 +281,13 @@ export class CustomerAccountLinkingService {
 
 // Export a singleton instance
 export const customerAccountLinkingService = new CustomerAccountLinkingService();
+
+// Export the findCustomerByPhone function for backward compatibility
+export const findCustomerByPhone = (phone: string) => {
+  return customerAccountLinkingService.findCustomerByPhone(phone);
+};
+
+// Export the linkUserToCustomer function for backward compatibility
+export const linkUserToCustomer = (userId: string, customerId: string) => {
+  return customerAccountLinkingService.linkUserToCustomer(userId, customerId);
+};
