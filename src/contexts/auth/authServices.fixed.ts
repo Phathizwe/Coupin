@@ -1,187 +1,196 @@
 /**
- * Enhanced authentication services with customer-user linking
- * and invitation handling
+ * Authentication services
+ * Refactored for better phone number handling and modularity
  */
-import { 
-  createUserWithEmailAndPassword, 
+import {
   signInWithEmailAndPassword,
   signOut,
   sendPasswordResetEmail,
-  UserCredential,
-  Auth
+  signInWithPopup,
+  GoogleAuthProvider,
+  FacebookAuthProvider,
+  OAuthProvider,
+  getRedirectResult
 } from 'firebase/auth';
-import { doc, setDoc, serverTimestamp, DocumentData } from 'firebase/firestore';
+import {
+  doc,
+  getDoc,
+  setDoc,
+  updateDoc,
+  collection,
+  query,
+  where,
+  getDocs
+} from 'firebase/firestore';
 import { auth, db } from '../../config/firebase';
-import { findCustomerByPhone } from '../../services/customerLookupService';
-import { linkCustomerToUser } from '../../services/customerLinkingService';
-import { normalizePhoneNumber } from '../../utils/phoneUtils';
-import { 
-  findInvitationsByPhone, 
-  acceptPendingInvitations 
-} from '../../services/invitationRelationshipService';
+import { ExtendedUser } from './types';
+import { registerUser } from './services/userRegistrationService';
+import { handleUserData, debugUserData } from './services/userDataService';
 
-/**
- * Register a new user with email and password
- * Enhanced with customer lookup, linking, and invitation handling
- */
-export const registerUser = async (
-  email: string,
-  password: string,
-  displayName: string,
-  role: 'customer' | 'business',
-  phone?: string
-): Promise<UserCredential> => {
+// Login with email and password
+export const loginWithEmail = async (email: string, password: string): Promise<ExtendedUser> => {
   try {
-    console.log('🔄 Starting registration process...', { email, role, phone });
+    console.log('🔍 [AUTH] Login attempt for email:', email);
+    const userCredential = await signInWithEmailAndPassword(auth, email, password);
     
-    // Create Firebase Auth user
-    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-    const user = userCredential.user;
-    
-    // Normalize phone number if provided
-    const normalizedPhone = phone ? normalizePhoneNumber(phone) : undefined;
-    console.log('📞 Phone normalized:', { original: phone, normalized: normalizedPhone });
-    
-    // For customers, check for existing customer record BEFORE creating user record
-    let linkedCustomerId: string | undefined;
-    let invitingBusinessIds: string[] = [];
-    
-    if (role === 'customer' && normalizedPhone) {
-      console.log('🔍 Looking for existing customer with phone:', normalizedPhone);
-      
-      try {
-        // Step 1: Find existing customer by phone
-        const existingCustomer = await findCustomerByPhone(normalizedPhone);
-        
-        if (existingCustomer) {
-          console.log('✅ Found existing customer:', existingCustomer.id);
-          linkedCustomerId = existingCustomer.id;
-          
-          // Update customer record with user ID using transaction
-          await linkCustomerToUser(existingCustomer.id, user.uid);
-          console.log('🔗 Customer linked to user successfully');
-        }
-        
-        // Step 2: Check for pending invitations regardless of whether customer exists
-        const pendingInvitations = await findInvitationsByPhone(normalizedPhone);
-        
-        if (pendingInvitations.length > 0) {
-          console.log(`✉️ Found ${pendingInvitations.length} pending invitations`);
-          
-          // Extract business IDs for user record
-          invitingBusinessIds = pendingInvitations.map(inv => inv.businessId);
-          
-          // If we have a customer ID (either existing or new), accept the invitations
-          if (linkedCustomerId) {
-            console.log('🔄 Accepting pending invitations for customer:', linkedCustomerId);
-            await acceptPendingInvitations(linkedCustomerId, normalizedPhone);
-          }
-          // If no customer ID yet, invitations will be accepted after customer creation
-        }
-      } catch (error) {
-        console.error('⚠️ Error during customer lookup or invitation handling:', error);
-        // Continue with registration even if lookup fails
-      }
+    console.log('✅ [AUTH] Login successful for user:', userCredential.user.uid);
+    const extendedUser = await handleUserData(userCredential.user);
+
+    if (!extendedUser) {
+      console.error('❌ [AUTH] Failed to load user data after login');
+      throw new Error('Failed to load user data');
     }
-    
-    // Create user document with proper linking
-    const userData: any = {
-      uid: user.uid,
-      email: user.email,
-      displayName,
-      role,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    };
-    
-    // Add phone number if provided
-    if (normalizedPhone) {
-      userData.phoneNumber = normalizedPhone;
-    }
-    
-    // Add customer-specific fields
-    if (role === 'customer') {
-      if (linkedCustomerId) {
-        userData.linkedCustomerId = linkedCustomerId;
-        console.log('👤 User record will include linkedCustomerId:', linkedCustomerId);
-      }
-      
-      if (invitingBusinessIds.length > 0) {
-        userData.invitingBusinessIds = invitingBusinessIds;
-        console.log('🏢 User record will include invitingBusinessIds:', invitingBusinessIds);
-      }
-    }
-    
-    // Add business-specific fields
-    if (role === 'business') {
-      // Business name is handled separately in business profile creation
-    }
-    
-    // Save user document
-    await setDoc(doc(db, 'users', user.uid), userData);
-    console.log('💾 User document created successfully');
-    
-    // If we have invitations but no customer record yet, create one and accept invitations
-    if (role === 'customer' && normalizedPhone && invitingBusinessIds.length > 0 && !linkedCustomerId) {
-      try {
-        console.log('🔄 Creating new customer record for invited user');
-        
-        // Create customer record
-        const customersRef = doc(db, 'customers', `customer_${user.uid}`);
-        const customerData = {
-          id: customersRef.id,
-          userId: user.uid,
-          phone: normalizedPhone,
-          email: email,
-          name: displayName,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        };
-        
-        await setDoc(customersRef, customerData);
-        console.log('✅ Created new customer record:', customersRef.id);
-        
-        // Accept pending invitations
-        await acceptPendingInvitations(customersRef.id, normalizedPhone);
-        
-        // Update user with customer ID
-        await setDoc(doc(db, 'users', user.uid), {
-          linkedCustomerId: customersRef.id,
-          updatedAt: serverTimestamp()
-        }, { merge: true });
-      } catch (error) {
-        console.error('❌ Error creating customer record or accepting invitations:', error);
-        // Continue with registration even if this fails
-      }
-    }
-    
-    return userCredential;
-  } catch (error) {
-    console.error('❌ Registration failed:', error);
+
+    return extendedUser;
+  } catch (error: any) {
+    console.error('❌ [AUTH] Login error:', error);
     throw error;
   }
 };
 
-/**
- * Login with email and password
- */
-export const loginWithEmailAndPassword = async (
-  email: string, 
-  password: string
-): Promise<UserCredential> => {
-  return signInWithEmailAndPassword(auth, email, password);
+// Export the registerUser function from the module
+export { registerUser };
+
+// Sign out
+export const logoutUser = async (): Promise<void> => {
+  try {
+    console.log('🔍 [AUTH] Signing out user');
+    await signOut(auth);
+    console.log('✅ [AUTH] User signed out successfully');
+  } catch (error) {
+    console.error('❌ [AUTH] Sign out error:', error);
+    throw error;
+  }
 };
 
-/**
- * Logout the current user
- */
-export const logout = async (): Promise<void> => {
-  return signOut(auth);
+// Reset password
+export const resetUserPassword = async (email: string): Promise<void> => {
+  try {
+    console.log('🔍 [AUTH] Sending password reset email to:', email);
+    await sendPasswordResetEmail(auth, email);
+    console.log('✅ [AUTH] Password reset email sent successfully');
+  } catch (error) {
+    console.error('❌ [AUTH] Reset password error:', error);
+    throw error;
+  }
 };
 
-/**
- * Send password reset email
- */
-export const resetPassword = async (email: string): Promise<void> => {
-  return sendPasswordResetEmail(auth, email);
+// Social sign in - unified function for all social providers
+export const socialSignIn = async (provider: 'google' | 'facebook' | 'microsoft' | 'linkedin'): Promise<ExtendedUser> => {
+  try {
+    console.log('🔍 [AUTH] Social sign-in attempt with provider:', provider);
+    let authProvider;
+
+    switch (provider) {
+      case 'google':
+        authProvider = new GoogleAuthProvider();
+        break;
+      case 'facebook':
+        authProvider = new FacebookAuthProvider();
+        break;
+      case 'microsoft':
+        authProvider = new OAuthProvider('microsoft.com');
+        break;
+      case 'linkedin':
+        // LinkedIn requires a custom OAuth flow, this is a placeholder
+        throw new Error('LinkedIn sign in not implemented');
+      default:
+        throw new Error(`Unsupported provider: ${provider}`);
+    }
+
+    const userCredential = await signInWithPopup(auth, authProvider);
+    console.log('✅ [AUTH] Social sign-in successful for user:', userCredential.user.uid);
+
+    // Check if user exists in Firestore
+    const userDoc = await getDoc(doc(db, 'users', userCredential.user.uid));
+
+    if (!userDoc.exists()) {
+      // First time social sign in, create user document
+      console.log('🔍 [AUTH] First-time social sign-in, creating user document');
+      await setDoc(doc(db, 'users', userCredential.user.uid), {
+        uid: userCredential.user.uid,
+        email: userCredential.user.email,
+        displayName: userCredential.user.displayName,
+        photoURL: userCredential.user.photoURL,
+        role: 'customer', // Default role
+        createdAt: new Date()
+      });
+      console.log('✅ [AUTH] Created user document for social sign-in user');
+    }
+
+    const extendedUser = await handleUserData(userCredential.user);
+    if (!extendedUser) {
+      console.error('❌ [AUTH] Failed to load user data after social sign-in');
+      throw new Error(`Failed to load user data after ${provider} sign-in`);
+    }
+    
+    return extendedUser;
+  } catch (error) {
+    console.error(`❌ [AUTH] ${provider} sign in error:`, error);
+    throw error;
+  }
 };
+
+// Switch business
+export const switchBusiness = async (userId: string, businessId: string): Promise<void> => {
+  try {
+    console.log('🔍 [AUTH] Switching business for user:', userId);
+    console.log('🔍 [AUTH] New business ID:', businessId);
+    
+    const userRef = doc(db, 'users', userId);
+
+    // Update current business ID
+    await updateDoc(userRef, {
+      currentBusinessId: businessId
+    });
+    
+    console.log('✅ [AUTH] Successfully switched business');
+  } catch (error) {
+    console.error('❌ [AUTH] Switch business error:', error);
+    throw error;
+  }
+};
+
+// Check for user invitations
+export const checkForInvitations = async (email: string): Promise<boolean> => {
+  try {
+    console.log('🔍 [AUTH] Checking for invitations for email:', email);
+    
+    const invitationsQuery = query(
+      collection(db, 'invitations'),
+      where('email', '==', email),
+      where('status', '==', 'pending')
+    );
+
+    const invitationsSnapshot = await getDocs(invitationsQuery);
+    const hasInvitations = !invitationsSnapshot.empty;
+    
+    console.log('🔍 [AUTH] Invitations found:', hasInvitations);
+    return hasInvitations;
+  } catch (error) {
+    console.error('❌ [AUTH] Check invitations error:', error);
+    return false;
+  }
+};
+
+// Check redirect result for auth redirects
+export const checkRedirectResult = async () => {
+  try {
+    console.log('🔍 [AUTH] Checking redirect result');
+    const result = await getRedirectResult(auth);
+
+    if (result) {
+      console.log('✅ [AUTH] Redirect result found for user:', result.user.uid);
+      return result.user;
+    }
+
+    console.log('ℹ️ [AUTH] No redirect result found');
+    return null;
+  } catch (error) {
+    console.error('❌ [AUTH] Check redirect result error:', error);
+    return null;
+  }
+};
+
+// Export the handleUserData function from the module
+export { handleUserData, debugUserData };

@@ -1,139 +1,200 @@
+/**
+ * PhoneNumberUpdater Component
+ * 
+ * This component allows customers to update their phone number
+ * if it's missing or incorrect. It can be shown on the profile page
+ * or as a modal when a phone number issue is detected.
+ */
 import React, { useState, useEffect } from 'react';
+import { doc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { db } from '../../config/firebase';
 import { useAuth } from '../../hooks/useAuth';
-import { userPhoneService } from '../../services/userPhoneService';
+import { normalizePhoneNumber, isValidSouthAfricanPhone, formatPhoneWithSpaces } from '../../utils/phoneUtils.enhanced';
+import { fixCustomerPhoneLinking } from '../../utils/registrationPhoneHandler';
 
 interface PhoneNumberUpdaterProps {
-  onSuccess?: (customerId?: string) => void;
-  onError?: (error: any) => void;
+  onComplete?: () => void;
+  showAsModal?: boolean;
 }
 
-/**
- * Component for updating a user's phone number and linking to customer records
- * This component works within the constraints of the existing Firestore rules
- */
 const PhoneNumberUpdater: React.FC<PhoneNumberUpdaterProps> = ({
-  onSuccess,
-  onError
+  onComplete,
+  showAsModal = false
 }) => {
   const { user } = useAuth();
-  const [phoneNumber, setPhoneNumber] = useState('');
+  const [phone, setPhone] = useState('');
+  const [originalPhone, setOriginalPhone] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [status, setStatus] = useState<'idle' | 'submitting' | 'success' | 'error'>('idle');
-  const [message, setMessage] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
+  const [formatted, setFormatted] = useState(false);
   
-  // Pre-fill the phone number if the user already has one
   useEffect(() => {
     if (user?.phoneNumber) {
-      setPhoneNumber(user.phoneNumber);
+      setPhone(user.phoneNumber);
+      setOriginalPhone(user.phoneNumber);
     }
   }, [user]);
-
+  
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setPhone(e.target.value);
+    setFormatted(false);
+    setError(null);
+  };
+  
+  const formatPhoneOnBlur = () => {
+    if (phone && !formatted) {
+      try {
+        // Show the formatted version to the user
+        const displayFormat = formatPhoneWithSpaces(phone);
+        setPhone(displayFormat);
+        setFormatted(true);
+      } catch (err) {
+        // Keep the original input if formatting fails
+        console.error('Error formatting phone number:', err);
+      }
+    }
+  };
+  
+  const validatePhone = (): boolean => {
+    if (!phone) {
+      setError('Please enter your phone number');
+      return false;
+    }
+    
+    const isValid = isValidSouthAfricanPhone(phone);
+    if (!isValid) {
+      setError('Please enter a valid South African phone number');
+      return false;
+    }
+    
+    return true;
+  };
+  
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!user) {
-      setStatus('error');
-      setMessage('You must be logged in to update your phone number.');
+    if (!validatePhone() || !user) {
       return;
     }
     
-    if (!phoneNumber.trim()) {
-      setStatus('error');
-      setMessage('Please enter a valid phone number.');
-      return;
-    }
+    setIsSubmitting(true);
+    setError(null);
     
     try {
-      setIsSubmitting(true);
-      setStatus('submitting');
-      setMessage('Updating your phone number and checking for existing coupons...');
+      console.log('🔍 [PHONE UPDATER] Updating phone number for user:', user.uid);
+      console.log('🔍 [PHONE UPDATER] New phone number:', phone);
       
-      // Use the userPhoneService to update the phone number and link to customer records
-      const customerId = await userPhoneService.updatePhoneAndLinkCustomer(user.uid, phoneNumber);
+      // Normalize the phone number for storage
+      const normalizedPhone = normalizePhoneNumber(phone);
       
-      if (customerId) {
-        setStatus('success');
-        setMessage('Your phone number has been updated and linked to your existing coupons!');
-        onSuccess?.(customerId);
-      } else {
-        // Phone was updated but no existing customer was found or linking failed
-        setStatus('success');
-        setMessage('Your phone number has been updated. No existing coupons were found for this number.');
-        onSuccess?.();
+      // Update user document with new phone number
+      const userRef = doc(db, 'users', user.uid);
+      await updateDoc(userRef, {
+        phoneNumber: normalizedPhone,
+        updatedAt: serverTimestamp()
+      });
+      
+      console.log('✅ [PHONE UPDATER] Updated phone number in user document');
+      
+      // Fix customer-user linking with the new phone number
+      const fixResult = await fixCustomerPhoneLinking(user.uid, normalizedPhone);
+      console.log('✅ [PHONE UPDATER] Fix result:', fixResult);
+      
+      setSuccess(true);
+      setOriginalPhone(normalizedPhone);
+      
+      // Call onComplete callback if provided
+      if (onComplete) {
+        setTimeout(onComplete, 1500); // Give user time to see success message
       }
-    } catch (error) {
-      console.error('Error updating phone number:', error);
-      setStatus('error');
-      setMessage('An error occurred while updating your phone number. Please try again later.');
-      onError?.(error);
+    } catch (err) {
+      console.error('❌ [PHONE UPDATER] Error updating phone number:', err);
+      setError('Failed to update phone number. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
   };
   
-  // Format the phone number as the user types (optional)
-  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    // Allow only digits, spaces, parentheses, plus, and dashes
-    const value = e.target.value.replace(/[^\d\s()+\-]/g, '');
-    setPhoneNumber(value);
-  };
-  
-  return (
-    <div className="phone-number-updater">
-      <form onSubmit={handleSubmit}>
-        <div className="form-group">
-          <label htmlFor="phoneNumber">Phone Number</label>
-          <input
-            type="tel"
-            id="phoneNumber"
-            value={phoneNumber}
-            onChange={handlePhoneChange}
-            placeholder="e.g., (083) 209 1122 or 0832091122"
-            disabled={isSubmitting}
-            className="form-control"
-          />
-          <small className="form-text text-muted">
-            Try using the phone number that businesses have on file for you.
-          </small>
-        </div>
-        
-        {status === 'error' && (
-          <div className="alert alert-danger mt-3" role="alert">
-            {message}
-          </div>
-        )}
-        
-        {status === 'success' && (
-          <div className="alert alert-success mt-3" role="alert">
-            {message}
-          </div>
-        )}
-        
-        <button 
-          type="submit" 
-          className="btn btn-primary mt-3" 
+  const renderForm = () => (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div>
+        <label htmlFor="phone" className="block text-sm font-medium text-gray-700">
+          Phone Number
+        </label>
+        <input
+          id="phone"
+          type="tel"
+          value={phone}
+          onChange={handleChange}
+          onBlur={formatPhoneOnBlur}
+          placeholder="e.g. 083 209 1122"
+          className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
           disabled={isSubmitting}
-        >
-          {isSubmitting ? 'Updating...' : user?.phoneNumber ? 'Update Phone Number' : 'Add Phone Number'}
-        </button>
-      </form>
+        />
+        {error && (
+          <p className="mt-1 text-sm text-red-600">{error}</p>
+        )}
+        <p className="mt-1 text-xs text-gray-500">
+          Enter your South African phone number to link your account to any existing coupons or loyalty programs.
+        </p>
+      </div>
       
-      {status === 'success' && (
-        <div className="mt-4 text-center">
-          <a 
-            href="/customer/coupons"
-            className="btn btn-outline-primary"
-          >
-            View My Coupons
-          </a>
+      <div>
+        <button
+          type="submit"
+          disabled={isSubmitting || (phone === originalPhone && originalPhone !== '')}
+          className={`w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-600 hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 ${
+            isSubmitting || (phone === originalPhone && originalPhone !== '') ? 'opacity-50 cursor-not-allowed' : ''
+          }`}
+        >
+          {isSubmitting ? 'Updating...' : 'Update Phone Number'}
+        </button>
+      </div>
+      
+      {success && (
+        <div className="rounded-md bg-green-50 p-4">
+          <div className="flex">
+            <div className="flex-shrink-0">
+              <svg className="h-5 w-5 text-green-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+              </svg>
+            </div>
+            <div className="ml-3">
+              <p className="text-sm font-medium text-green-800">
+                Phone number updated successfully!
+              </p>
+            </div>
+          </div>
         </div>
       )}
-      
-      <div className="mt-4">
-        <div className="alert alert-info">
-          <span className="icon">ℹ️</span> <strong>Important:</strong> To see your coupons, add your phone number to link your account to your customer profile.
-          <p className="mt-2 mb-0">Try using the phone number that businesses have on file for you.</p>
+    </form>
+  );
+  
+  // Render as a modal if showAsModal is true
+  if (showAsModal) {
+    return (
+      <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center p-4 z-50">
+        <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+          <h2 className="text-lg font-medium text-gray-900 mb-4">
+            Update Your Phone Number
+          </h2>
+          <p className="text-sm text-gray-500 mb-4">
+            We need your phone number to link your account to any existing coupons or loyalty programs.
+          </p>
+          
+          {renderForm()}
         </div>
+      </div>
+    );
+  }
+  
+  // Render as a regular component
+  return (
+    <div className="bg-white shadow sm:rounded-lg p-4 mb-6">
+      <h3 className="text-lg font-medium text-gray-900">Phone Number</h3>
+      <div className="mt-3">
+        {renderForm()}
       </div>
     </div>
   );
