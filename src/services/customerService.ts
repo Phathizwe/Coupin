@@ -1,3 +1,7 @@
+/**
+ * Customer service
+ * Handles customer record creation and lookup
+ */
 import { 
   collection, 
   doc, 
@@ -17,6 +21,7 @@ import {
 import { db } from '../config/firebase';
 import { Customer } from '../types';
 import Papa from 'papaparse';
+import { normalizePhoneNumber } from '../utils/phoneUtils';
 
 // Get customers for a business with pagination
 export const getCustomers = async (
@@ -252,4 +257,123 @@ export const importCustomersFromCSV = async (businessId: string, csvFile: File) 
       }
     });
   });
+};
+
+/**
+ * Create a customer record
+ * 
+ * @param userId The user ID to associate with the customer
+ * @param customerData The customer data
+ * @returns The ID of the created customer
+ */
+export const createCustomerRecord = async (
+  userId: string,
+  customerData: {
+    firstName: string;
+    lastName: string;
+    email: string;
+    phone: string;
+    userId: string;
+  }
+) => {
+  console.log('🔍 [CUSTOMER DEBUG] Creating customer record...');
+  console.log('🔍 [CUSTOMER DEBUG] User ID:', userId);
+  console.log('🔍 [CUSTOMER DEBUG] Customer data:', customerData);
+  
+  try {
+    const customersRef = collection(db, 'customers');
+    const newCustomerRef = doc(customersRef);
+    const customerRecord = {
+      ...customerData,
+      joinDate: serverTimestamp(),
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    };
+    
+    console.log('🔍 [CUSTOMER DEBUG] Final customer record:', customerRecord);
+    console.log('🔍 [CUSTOMER DEBUG] Document ID:', newCustomerRef.id);
+    
+    await setDoc(newCustomerRef, customerRecord);
+    console.log('🔍 [CUSTOMER DEBUG] Customer document saved successfully');
+    
+    // Verify the save worked
+    const savedDoc = await getDocs(query(customersRef, where('userId', '==', userId), limit(1)));
+    if (!savedDoc.empty) {
+      console.log('🔍 [CUSTOMER DEBUG] Verification successful:', savedDoc.docs[0].data());
+      return { id: newCustomerRef.id, ...customerRecord };
+    } else {
+      throw new Error('Customer document not found after creation');
+    }
+  } catch (error) {
+    console.error('🚨 [CUSTOMER ERROR] Failed to create customer record:', error);
+    throw error;
+  }
+};
+
+/**
+ * Find a customer by user ID
+ * 
+ * @param userId The user ID to search for
+ * @returns The customer data if found, null otherwise
+ */
+export const findCustomerByUserId = async (userId: string) => {
+  console.log('🔍 [LOOKUP DEBUG] Looking for customer with userId:', userId);
+  
+  try {
+    const customersRef = collection(db, 'customers');
+    const q = query(customersRef, where('userId', '==', userId));
+    const querySnapshot = await getDocs(q);
+    
+    console.log('🔍 [LOOKUP DEBUG] Query results:', querySnapshot.size, 'documents');
+    
+    if (!querySnapshot.empty) {
+      const customerDoc = querySnapshot.docs[0];
+      const customerData = { id: customerDoc.id, ...customerDoc.data() };
+      console.log('🔍 [LOOKUP DEBUG] Found customer:', customerData);
+      return customerData;
+    }
+    
+    console.log('🔍 [LOOKUP DEBUG] No customer found for userId:', userId);
+    return null;
+  } catch (error) {
+    console.error('🚨 [LOOKUP ERROR] Error finding customer:', error);
+    throw error;
+  }
+};
+
+/**
+ * Find a customer by phone number
+ * 
+ * @param phone The phone number to search for
+ * @returns The customer data if found, null otherwise
+ */
+export const findCustomerByPhone = async (phone: string) => {
+  console.log('🔍 [LOOKUP DEBUG] Looking for customer with phone:', phone);
+  
+  if (!phone) {
+    console.log('❌ [LOOKUP DEBUG] No phone number provided');
+    return null;
+  }
+  
+  try {
+    const normalizedPhone = normalizePhoneNumber(phone);
+    const customersRef = collection(db, 'customers');
+    const q = query(customersRef, where('phone', '==', normalizedPhone));
+    const querySnapshot = await getDocs(q);
+    
+    console.log('🔍 [LOOKUP DEBUG] Query results:', querySnapshot.size, 'documents');
+    
+    if (!querySnapshot.empty) {
+      const customerDoc = querySnapshot.docs[0];
+      const customerData = { id: customerDoc.id, ...customerDoc.data() };
+      console.log('🔍 [LOOKUP DEBUG] Found customer:', customerData);
+      return customerData;
+    }
+    
+    console.log('🔍 [LOOKUP DEBUG] No customer found for phone:', phone);
+    return null;
+  } catch (error) {
+    console.error('🚨 [LOOKUP ERROR] Error finding customer:', error);
+    throw error;
+  }
 };

@@ -50,7 +50,9 @@ export const registerUser = async (
     };
     
     // Process phone number if provided
+    if (phone) {
     userData = processPhoneNumber(user.uid, phone, userData);
+    }
     
     // Handle role-specific setup
     if (role === 'business') {
@@ -63,7 +65,18 @@ export const registerUser = async (
     
     // For customer role with phone, create/link customer record
     if (role === 'customer' && phone) {
-      await handleCustomerRecord(user.uid, email, name, phone);
+      console.log('🔍 [REG DEBUG] Creating customer record...');
+  try {
+        await handleCustomerRecord(user.uid, email, name, phone);
+        console.log('🔍 [REG DEBUG] Customer record created successfully');
+  } catch (error) {
+        console.error('🚨 [REG ERROR] Failed to create customer record:', error);
+        // Don't throw - allow registration to complete even if customer record fails
+  }
+    } else {
+      console.log('🔍 [REG DEBUG] Skipping customer record creation');
+      console.log('🔍 [REG DEBUG] - Role is customer:', role === 'customer');
+      console.log('🔍 [REG DEBUG] - Phone provided:', !!phone);
     }
     
     // Return extended user

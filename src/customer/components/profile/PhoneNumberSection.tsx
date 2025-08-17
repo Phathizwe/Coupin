@@ -67,24 +67,28 @@ const PhoneNumberSection: React.FC<PhoneNumberSectionProps> = ({
       const userDoc = await getDoc(userRef);
       
       if (userDoc.exists()) {
-        // Update existing document
+        // Update existing document - use phoneNumber field for consistency
         await updateDoc(userRef, {
-          phone: normalizedPhone,
+          phoneNumber: normalizedPhone,
+          phone: normalizedPhone, // Add both fields for backward compatibility
           phoneNormalized: normalizedPhone.replace(/\D/g, ''), // Store digits only version for queries
           updatedAt: new Date()
         });
+        console.log('🔍 [PHONE DEBUG] Updated user phone number:', normalizedPhone);
       } else {
         // Create new user document if it doesn't exist
         await setDoc(userRef, {
           uid: user.uid,
           email: user.email,
           displayName: user.displayName || '',
-          phone: normalizedPhone,
+          phoneNumber: normalizedPhone,
+          phone: normalizedPhone, // Add both fields for backward compatibility
           phoneNormalized: normalizedPhone.replace(/\D/g, ''),
           role: 'customer',
           createdAt: new Date(),
           updatedAt: new Date()
         });
+        console.log('🔍 [PHONE DEBUG] Created new user document with phone:', normalizedPhone);
       }
       
       // Check if phone number has changed

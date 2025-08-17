@@ -30,20 +30,37 @@ const ProfilePage: React.FC = () => {
       
       setIsLoading(true);
       try {
+        console.log('🔍 [PROFILE DEBUG] Component mounted');
+        console.log('🔍 [PROFILE DEBUG] Current user:', user);
+        console.log('🔍 [PROFILE DEBUG] User data keys:', user ? Object.keys(user) : 'No user');
+        console.log('🔍 [PROFILE DEBUG] Phone number field:', user?.phoneNumber);
+        
         // Get user's phone number from their profile
         let userPhone = '';
         const userDoc = await getDoc(doc(db, 'users', user.uid));
         if (userDoc.exists()) {
           const userData = userDoc.data();
-          if (userData.phone) {
+          console.log('🔍 [PROFILE DEBUG] User data from Firestore:', userData);
+          
+          // Check both phoneNumber and phone fields in the Firestore document
+          if (userData.phoneNumber) {
+            userPhone = userData.phoneNumber;
+            setPhoneNumber(userData.phoneNumber);
+            setOriginalPhoneNumber(userData.phoneNumber);
+            console.log('🔍 [PROFILE DEBUG] Found phoneNumber:', userData.phoneNumber);
+          } else if (userData.phone) {
             userPhone = userData.phone;
             setPhoneNumber(userData.phone);
             setOriginalPhoneNumber(userData.phone);
-          }
+            console.log('🔍 [PROFILE DEBUG] Found phone:', userData.phone);
+          } else {
+            console.log('🔍 [PROFILE DEBUG] No phone number found in user data');
         }
+      }
         
         // Query for customers with this user ID
         const linkedCustomer = await findCustomerByUserId(user.uid);
+        console.log('🔍 [PROFILE DEBUG] Linked customer:', linkedCustomer);
         
         if (linkedCustomer) {
           setCustomerProfile(linkedCustomer);
@@ -52,6 +69,7 @@ const ProfilePage: React.FC = () => {
           if (linkedCustomer.phone && !userPhone) {
             setPhoneNumber(linkedCustomer.phone);
             setOriginalPhoneNumber(linkedCustomer.phone);
+            console.log('🔍 [PROFILE DEBUG] Using phone from customer profile:', linkedCustomer.phone);
           }
         }
       } catch (error) {
@@ -59,8 +77,8 @@ const ProfilePage: React.FC = () => {
       } finally {
         setIsLoading(false);
       }
-    };
-    
+};
+
     checkCustomerProfile();
   }, [user]);
 
