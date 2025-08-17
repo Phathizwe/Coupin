@@ -103,18 +103,31 @@ export const updateBusinessProfile = async (businessId: string, profile: Partial
 
     await setDoc(docRef, profileWithTimestamp, { merge: true });
 
-    // Update the main business document for customer-facing pages
-    const businessDocRef = doc(db, 'businesses', businessId);
-    await updateDoc(businessDocRef, {
-      businessName: profile.name,
-      description: profile.description,
-      address: profile.address,
-      phone: profile.phone,
-      website: profile.website,
-      email: profile.email,
-      industry: profile.industry, // Added industry field update
-      updatedAt: serverTimestamp()
-    });
+    // Only update the main business document if we have customer-facing fields
+    // This prevents undefined values from being written
+    if (profile.regionalSettings) {
+      // For regional settings, only update those specific fields
+      const businessDocRef = doc(db, 'businesses', businessId);
+      await updateDoc(businessDocRef, {
+        regionalSettings: profile.regionalSettings,
+        updatedAt: serverTimestamp()
+      });
+    } else if (profile.name || profile.description || profile.address || 
+               profile.phone || profile.website || profile.email || profile.industry) {
+      // For profile updates, only include fields that are present
+      const businessDocRef = doc(db, 'businesses', businessId);
+      const updateData: any = { updatedAt: serverTimestamp() };
+      
+      if (profile.name) updateData.businessName = profile.name;
+      if (profile.description) updateData.description = profile.description;
+      if (profile.address) updateData.address = profile.address;
+      if (profile.phone) updateData.phone = profile.phone;
+      if (profile.website) updateData.website = profile.website;
+      if (profile.email) updateData.email = profile.email;
+      if (profile.industry) updateData.industry = profile.industry;
+      
+      await updateDoc(businessDocRef, updateData);
+    }
   } catch (error) {
     console.error('Error updating business profile:', error);
     throw error;
@@ -176,24 +189,23 @@ export const updateBrandingSettings = async (
 
         brandingToSave.logoUrl = dataUrl;
 
-        // Still try to upload to Firebase Storage in the background
-        // but don't wait for it or use its result
-        try {
-          const timestamp = new Date().getTime();
-          const fileExtension = logoFile.name.split('.').pop();
-          const fileName = `${timestamp}.${fileExtension}`;
-          const storageRef = ref(storage, `businesses/${businessId}/logos/${fileName}`);
+        // In development mode, don't try to upload to Firebase Storage
+        // This avoids CORS errors in the console
+        if (process.env.NODE_ENV !== 'development') {
+          try {
+            const timestamp = new Date().getTime();
+            const fileExtension = logoFile.name.split('.').pop();
+            const fileName = `${timestamp}.${fileExtension}`;
+            const storageRef = ref(storage, `businesses/${businessId}/logos/${fileName}`);
 
-          // Upload without waiting for result
-          uploadBytes(storageRef, logoFile).then(() => {
-            console.log('Background upload to Firebase Storage completed');
-          }).catch(err => {
-            console.log('Background upload failed, but using data URL so it\'s fine:', err);
-          });
-        } catch (uploadError) {
-          console.log('Failed to start background upload, but using data URL so it\'s fine');
+            const uploadResult = await uploadBytes(storageRef, logoFile);
+            const downloadUrl = await getDownloadURL(uploadResult.ref);
+            brandingToSave.logoUrl = downloadUrl;
+          } catch (uploadError) {
+            console.error('Error uploading to Firebase Storage:', uploadError);
+            // Continue with data URL if upload fails
+          }
         }
-
       } catch (error) {
         console.error('Error handling logo:', error);
         throw new Error('Failed to process logo. Please try again.');

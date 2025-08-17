@@ -42,18 +42,18 @@ service cloud.firestore {
       allow delete: if hasBusinessAccess(businessId);
     }
     
-    // Customers collection - SIMPLIFIED
+    // Customers collection
     match /customers/{customerId} {
-      allow read: if isAuthenticated() && (
-        isOwner(resource.data.userId) || 
-        hasBusinessAccess(resource.data.businessId)
-      );
+      // Allow reading customer records if authenticated
+      allow read: if isAuthenticated();
+      
+      // Allow creating customer records if authenticated
       allow create: if isAuthenticated();
-      allow update: if isAuthenticated() && (
-        isOwner(resource.data.userId) || 
-        hasBusinessAccess(resource.data.businessId) ||
-        resource.data.userId == null // Allow linking unlinked customers
-      );
+      
+      // Allow updating customer records if authenticated
+      allow update: if isAuthenticated();
+      
+      // Allow deleting customer records if user has business access
       allow delete: if isAuthenticated() && hasBusinessAccess(resource.data.businessId);
     }
     
@@ -75,21 +75,46 @@ service cloud.firestore {
       allow create, update, delete: if isAuthenticated() && hasBusinessAccess(request.resource.data.businessId);
     }
 
-    // Customer Coupons collection - SIMPLIFIED
+    // Customer Coupons collection
     match /customerCoupons/{customerCouponId} {
+      // Allow reading customer coupons if authenticated
       allow read: if isAuthenticated();
+      
+      // Allow creating customer coupons if authenticated
       allow create: if isAuthenticated();
-      allow update, delete: if isAuthenticated() && (
-        resource.data.userId == request.auth.uid || 
-        isCustomerOwner(resource.data.customerId) ||
-        hasBusinessAccess(resource.data.businessId)
-      );
+      
+      // Allow updating/deleting customer coupons if authenticated
+      allow update, delete: if isAuthenticated();
+    }
+    
+    // Coupon Distributions collection
+    match /couponDistributions/{distributionId} {
+      allow read, write: if isAuthenticated();
+    }
+    
+    // Savings Events collection
+    match /savingsEvents/{eventId} {
+      allow read, write: if isAuthenticated();
+    }
+    
+    // Redemptions collection
+    match /redemptions/{redemptionId} {
+      allow read, write: if isAuthenticated();
+    }
+    
+    // Savings Goals collection
+    match /savingsGoals/{goalId} {
+      allow read, write: if isAuthenticated();
+    }
+    
+    // Lead Capture collection
+    match /leadCapture/{leadId} {
+      allow read, write: if isAuthenticated();
     }
     
     // All other collections - default rules
     match /{document=**} {
-      allow read: if isAuthenticated();
-      allow write: if isAuthenticated();
+      allow read, write: if isAuthenticated();
     }
   }
 }

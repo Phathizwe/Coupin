@@ -1,22 +1,13 @@
-/**
- * EnsurePhoneNumberStored Component
- * 
- * This component automatically ensures that phone numbers are properly stored
- * and linked for customer accounts. It runs silently in the background and
- * attempts to fix any phone number registration issues.
- */
 import React, { useEffect, useState } from 'react';
 import { useAuth } from '../../hooks/useAuth';
 import { ensurePhoneNumberStored, verifyCustomerPhoneLinking, fixCustomerPhoneLinking } from '../../utils/registrationPhoneHandler';
 
-interface EnsurePhoneNumberStoredProps {
-  phoneNumber?: string;
+interface PhoneNumberUpdaterProps {
   onComplete?: (result: any) => void;
   showDebugInfo?: boolean;
 }
 
-const EnsurePhoneNumberStored: React.FC<EnsurePhoneNumberStoredProps> = ({ 
-  phoneNumber,
+const PhoneNumberUpdater: React.FC<PhoneNumberUpdaterProps> = ({ 
   onComplete,
   showDebugInfo = false
 }) => {
@@ -27,31 +18,31 @@ const EnsurePhoneNumberStored: React.FC<EnsurePhoneNumberStoredProps> = ({
   useEffect(() => {
     const checkAndFixPhoneNumber = async () => {
       if (!user || user.role !== 'customer') {
-        console.log('🔍 [ENSURE PHONE] Not a customer user, skipping phone number check');
+        console.log('🔍 [PHONE UPDATER] Not a customer user, skipping phone number check');
         return;
       }
       
       try {
         setStatus('checking');
-        console.log('🔍 [ENSURE PHONE] Checking phone number for user:', user.uid);
+        console.log('🔍 [PHONE UPDATER] Checking phone number for user:', user.uid);
         
         // Step 1: Ensure phone number is stored in user document
-        const phoneToCheck = phoneNumber || user.phoneNumber || undefined;
+        const phoneToCheck = user.phoneNumber || undefined;
         const phoneStored = await ensurePhoneNumberStored(user.uid, phoneToCheck);
         
-        console.log('🔍 [ENSURE PHONE] Phone number stored result:', phoneStored);
+        console.log('🔍 [PHONE UPDATER] Phone number stored result:', phoneStored);
         
         // Step 2: Verify customer-user linking
         const verificationResult = await verifyCustomerPhoneLinking(user.uid, phoneToCheck);
-        console.log('🔍 [ENSURE PHONE] Verification result:', verificationResult);
+        console.log('🔍 [PHONE UPDATER] Verification result:', verificationResult);
         
         // Step 3: If there are issues, attempt to fix them
         if (!verificationResult.success) {
-          console.log('🔧 [ENSURE PHONE] Issues detected, attempting to fix...');
+          console.log('🔧 [PHONE UPDATER] Issues detected, attempting to fix...');
           setStatus('fixing');
           
           const fixResult = await fixCustomerPhoneLinking(user.uid, phoneToCheck);
-          console.log('🔧 [ENSURE PHONE] Fix result:', fixResult);
+          console.log('🔧 [PHONE UPDATER] Fix result:', fixResult);
           
           setResult({
             phoneStored,
@@ -74,7 +65,7 @@ const EnsurePhoneNumberStored: React.FC<EnsurePhoneNumberStoredProps> = ({
           onComplete(result);
         }
       } catch (error) {
-        console.error('❌ [ENSURE PHONE] Error checking/fixing phone number:', error);
+        console.error('❌ [PHONE UPDATER] Error checking/fixing phone number:', error);
         setStatus('error');
         setResult({ error: error instanceof Error ? error.message : 'Unknown error' });
       }
@@ -83,7 +74,7 @@ const EnsurePhoneNumberStored: React.FC<EnsurePhoneNumberStoredProps> = ({
     if (user) {
       checkAndFixPhoneNumber();
     }
-  }, [user, phoneNumber, onComplete]);
+  }, [user, onComplete]);
   
   // This component doesn't render anything visible unless showDebugInfo is true
   if (!showDebugInfo) {
@@ -117,4 +108,4 @@ const EnsurePhoneNumberStored: React.FC<EnsurePhoneNumberStoredProps> = ({
   );
 };
 
-export default EnsurePhoneNumberStored;
+export default PhoneNumberUpdater;

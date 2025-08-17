@@ -42,7 +42,7 @@ const CustomerCoupons: React.FC<CustomerCouponsProps> = ({
   viewMode = 'default',
   onCouponAction
 }) => {
-  const { user } = useAuth();
+  const { user, isLoading: authLoading } = useAuth();
   const [coupons, setCoupons] = useState<Coupon[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -54,6 +54,7 @@ const CustomerCoupons: React.FC<CustomerCouponsProps> = ({
   const [sortBy, setSortBy] = useState<'endDate' | 'startDate' | 'businessName' | 'value'>('endDate');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [animateIn, setAnimateIn] = useState(false);
+  const [fetchAttempted, setFetchAttempted] = useState(false);
 
   // Add staggered animation effect
   useEffect(() => {
@@ -62,14 +63,31 @@ const CustomerCoupons: React.FC<CustomerCouponsProps> = ({
     }
   }, [coupons, loading]);
 
+  // Only fetch coupons when auth is ready and user is logged in
   useEffect(() => {
+    // Wait for auth to be ready
+    if (authLoading) {
+      return;
+    }
+    
+    // Check if user is logged in
     if (user?.uid) {
       fetchCoupons();
+    } else if (!authLoading) {
+      // Auth is ready but no user is logged in
+      setLoading(false);
+      setError('Please log in to view your coupons');
+      setFetchAttempted(true);
     }
-  }, [user, filterStatus, sortBy, sortDirection]);
+  }, [user, authLoading, filterStatus, sortBy, sortDirection]);
 
   const fetchCoupons = async (isLoadMore = false) => {
-    if (!user?.uid) return;
+    // Double-check that we have a valid user ID
+    if (!user?.uid) {
+      setLoading(false);
+      setFetchAttempted(true);
+      return;
+    }
 
     try {
       if (isLoadMore) {
@@ -77,6 +95,8 @@ const CustomerCoupons: React.FC<CustomerCouponsProps> = ({
       } else {
         setLoading(true);
       }
+      
+      setFetchAttempted(true);
 
       // Call fetchCustomerCoupons with just the required parameters
       const result = await fetchCustomerCoupons(
@@ -132,6 +152,7 @@ const CustomerCoupons: React.FC<CustomerCouponsProps> = ({
 
       setLastDoc(result.lastDoc);
       setHasMore(result.coupons.length > 0); // If we got results, there might be more
+      setError(null);
 
     } catch (err) {
       console.error('Error fetching coupons:', err);
@@ -192,10 +213,24 @@ const CustomerCoupons: React.FC<CustomerCouponsProps> = ({
   };
 
   // Render loading state
-  if (loading) {
+  if (authLoading || (loading && !fetchAttempted)) {
     return viewMode === 'simple'
       ? <EmotionalLoadingState />
       : <LoadingSpinner />;
+  }
+
+  // Render not logged in state
+  if (!user && !authLoading) {
+    return (
+      <div className={`p-4 ${viewMode === 'simple' ? 'bg-amber-50/80 backdrop-blur-sm' : 'bg-amber-50'} text-amber-700 rounded-xl shadow-sm border border-amber-100`}>
+        <div className="flex items-center space-x-3">
+          <div className="text-2xl">👋</div>
+          <div>
+            <p className="font-medium">Please log in to view your coupons</p>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   // Render error state
@@ -252,7 +287,7 @@ const CustomerCoupons: React.FC<CustomerCouponsProps> = ({
         <div className="space-y-4">
           {filteredCoupons.map((coupon, index) => (
             <div
-              key={coupon.id}
+              key={`${coupon.id}-${index}`}
               className={`${ANIMATIONS.transition.medium} ${animateIn
                   ? 'opacity-100 translate-y-0'
                   : 'opacity-0 translate-y-4'
@@ -311,7 +346,7 @@ const CustomerCoupons: React.FC<CustomerCouponsProps> = ({
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {filteredCoupons.map((coupon, index) => (
           <div
-            key={coupon.id}
+            key={`${coupon.id}-${index}`}
             className={`${ANIMATIONS.transition.medium} ${animateIn
                 ? 'opacity-100 translate-y-0'
                 : 'opacity-0 translate-y-4'

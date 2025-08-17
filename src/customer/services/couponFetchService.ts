@@ -5,7 +5,6 @@ import {
   getDocs,
   orderBy,
   limit,
-  or,
   Timestamp,
   documentId,
   getDoc,
@@ -22,21 +21,25 @@ import { findCustomerByUserId } from '../../services/customerLinkingService';
  */
 export const fetchCouponIds = async (idsToSearch: string[], pageSize: number): Promise<string[]> => {
   try {
+    // Validate input
+    if (!idsToSearch || idsToSearch.length === 0 || !idsToSearch[0]) {
+      console.warn('Invalid or empty IDs provided to fetchCouponIds');
+      return [];
+    }
+    
     // First, check if the user is linked to a customer profile to get phone number
     let customerPhone: string | undefined;
     let linkedCustomerId: string | undefined;
     
-    if (idsToSearch.length > 0) {
-      try {
-        const linkedCustomer = await findCustomerByUserId(idsToSearch[0]);
-        customerPhone = linkedCustomer?.phone;
-        linkedCustomerId = linkedCustomer?.id;
-        console.log('Linked customer phone:', customerPhone || 'No phone');
-        console.log('Linked customer ID:', linkedCustomerId || 'Not linked');
-      } catch (error) {
-        console.warn('Error finding linked customer, continuing without phone lookup:', error);
-        // Continue without phone lookup
-      }
+    try {
+      const linkedCustomer = await findCustomerByUserId(idsToSearch[0]);
+      customerPhone = linkedCustomer?.phone;
+      linkedCustomerId = linkedCustomer?.id;
+      console.log('Linked customer phone:', customerPhone || 'No phone');
+      console.log('Linked customer ID:', linkedCustomerId || 'Not linked');
+    } catch (error) {
+      console.warn('Error finding linked customer, continuing without phone lookup:', error);
+      // Continue without phone lookup
     }
     
     // Initialize empty arrays for each document type
@@ -112,30 +115,6 @@ export const fetchCouponIds = async (idsToSearch: string[], pageSize: number): P
       console.log('Total business coupons found:', businessCouponDocs.length);
     }
     
-    // Special case for InfoNails and Phar Hizwe
-    if (idsToSearch.includes('cylWKsJMyzTMn2NcaRrByvVPJN42') && distributionDocs.length === 0 && customerCouponDocs.length === 0) {
-      console.log('Special case: Adding InfoNails coupon for Phar Hizwe');
-      
-      try {
-        // Try to fetch InfoNails business coupons directly
-        const infoNailsBusinessId = 'fjMTsyvWbMkJhYpLDCX'; // InfoNails business ID
-        const couponsRef = collection(db, 'coupons');
-        const couponsQuery = query(
-          couponsRef,
-          where('businessId', '==', infoNailsBusinessId),
-          where('active', '==', true)
-        );
-        
-        const couponsSnapshot = await getDocs(couponsQuery);
-        if (!couponsSnapshot.empty) {
-          businessCouponDocs = couponsSnapshot.docs;
-          console.log(`Found ${businessCouponDocs.length} InfoNails coupons to display`);
-        }
-      } catch (error) {
-        console.error('Error fetching InfoNails coupons:', error);
-      }
-    }
-    
     // Combine all sources of coupon IDs
     const couponIds = [
       ...distributionDocs.map(doc => doc.data()?.couponId),
@@ -176,6 +155,7 @@ const fetchDistributionDocs = async (idsToSearch: string[]) => {
       
       allDocs.push(...snapshot.docs);
     } catch (error) {
+      // Don't throw, just log and continue
       console.error(`Error fetching distributions for ID ${id}:`, error);
     }
   }
@@ -208,7 +188,12 @@ const fetchCustomerCouponDocs = async (idsToSearch: string[], pageSize: number) 
       console.log(`Found ${customerIdSnapshot.size} customer coupons with customerId: ${id}`);
       
       allDocs.push(...customerIdSnapshot.docs);
-      
+    } catch (error) {
+      // Don't throw, just log and continue
+      console.error(`Error fetching customer coupons for ID ${id}:`, error);
+    }
+    
+    try {
       // Query 2: Check for userId
       const customerCouponsRef2 = collection(db, 'customerCoupons');
       const userIdQuery = query(
@@ -224,6 +209,7 @@ const fetchCustomerCouponDocs = async (idsToSearch: string[], pageSize: number) 
       
       allDocs.push(...userIdSnapshot.docs);
     } catch (error) {
+      // Don't throw, just log and continue
       console.error(`Error fetching customer coupons for ID ${id}:`, error);
     }
   }
@@ -359,12 +345,6 @@ const fetchBusinessCoupons = async (userId: string) => {
         businessIds.push(...customerData.visitedBusinesses);
       }
       
-      // Special case for InfoNails
-      const infoNailsBusinessId = 'fjMTsyvWbMkJhYpLDCX'; // InfoNails business ID
-      if (!businessIds.includes(infoNailsBusinessId)) {
-        businessIds.push(infoNailsBusinessId);
-      }
-      
       // Remove duplicates (using filter instead of Set for better compatibility)
       const uniqueBusinessIds = businessIds.filter((id, index, self) => 
         self.indexOf(id) === index
@@ -392,23 +372,26 @@ const fetchBusinessCoupons = async (userId: string) => {
       }
     } else {
       console.log(`No linked customer found for user ${userId}`);
-      
-      // If no linked customer, try to fetch InfoNails coupons directly
-      const infoNailsBusinessId = 'fjMTsyvWbMkJhYpLDCX'; // InfoNails business ID
+    }
+    
+    // If no business coupons were found through customer links, try to fetch public coupons
+    if (allDocs.length === 0) {
       try {
-        const couponsRef = collection(db, 'coupons');
-        const couponsQuery = query(
-          couponsRef,
-          where('businessId', '==', infoNailsBusinessId),
-          where('active', '==', true)
+        // Fetch public coupons (those marked as available to all users)
+        const publicCouponsRef = collection(db, 'coupons');
+        const publicCouponsQuery = query(
+          publicCouponsRef,
+          where('isPublic', '==', true),
+          where('active', '==', true),
+          limit(10)
         );
         
-        const couponsSnapshot = await getDocs(couponsQuery);
-        console.log(`Found ${couponsSnapshot.size} InfoNails coupons for unlinked user`);
+        const publicCouponsSnapshot = await getDocs(publicCouponsQuery);
+        console.log(`Found ${publicCouponsSnapshot.size} public coupons`);
         
-        allDocs.push(...couponsSnapshot.docs);
+        allDocs.push(...publicCouponsSnapshot.docs);
       } catch (error) {
-        console.error(`Error fetching InfoNails coupons:`, error);
+        console.error('Error fetching public coupons:', error);
       }
     }
   } catch (error) {

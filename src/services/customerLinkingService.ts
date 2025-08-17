@@ -63,6 +63,57 @@ export const findCustomerByUserId = async (userId: string): Promise<CustomerReco
       return customer;
     } else {
       console.log('❌ No customer found with userId:', userId);
+      
+      // Additional check: Try to find customer by checking user record for linkedCustomerId
+      try {
+        const userRef = doc(db, 'users', userId);
+        const userDoc = await getDoc(userRef);
+        
+        if (userDoc.exists() && userDoc.data().linkedCustomerId) {
+          const linkedCustomerId = userDoc.data().linkedCustomerId;
+          console.log('🔍 Found linkedCustomerId in user record, checking customer:', linkedCustomerId);
+          
+          const customerRef = doc(db, 'customers', linkedCustomerId);
+          const customerDoc = await getDoc(customerRef);
+          
+          if (customerDoc.exists()) {
+            const customerData = customerDoc.data();
+            
+            // If customer exists but userId is not set, update it
+            if (!customerData.userId || customerData.userId !== userId) {
+              console.log('⚠️ Customer record exists but userId is not set correctly, fixing...');
+              
+              try {
+                await setDoc(customerRef, {
+                  userId: userId,
+                  updatedAt: new Date()
+                }, { merge: true });
+                
+                console.log('✅ Updated customer record with correct userId');
+              } catch (updateError) {
+                console.error('❌ Error updating customer with userId:', updateError);
+              }
+            }
+            
+            const customer: CustomerRecord = {
+              id: customerDoc.id,
+              phone: customerData.phone || '',
+              name: customerData.name,
+              email: customerData.email,
+              businessId: customerData.businessId,
+              userId: userId, // Use the correct userId even if not yet updated in DB
+              createdAt: customerData.createdAt,
+              updatedAt: customerData.updatedAt
+            };
+            
+            console.log('✅ Found customer through linkedCustomerId:', customer);
+            return customer;
+          }
+        }
+      } catch (error) {
+        console.error('❌ Error checking user record for linkedCustomerId:', error);
+      }
+      
       return null;
     }
   } catch (error) {
@@ -87,18 +138,32 @@ export const findCustomerByPhone = async (phone: string): Promise<CustomerRecord
   
   // Try multiple phone number formats
   const normalizedPhone = normalizePhoneNumber(phone);
+  
+  // Create more phone formats to increase chances of finding a match
   const phoneFormats = [
     normalizedPhone,                      // +27832091122
     phone,                                // Original format
     phone.replace(/\D/g, ''),             // Digits only
     `0${normalizedPhone.substring(3)}`,   // 0832091122
+    normalizedPhone.replace(/^\+/, ''),   // 27832091122 (no plus)
   ];
   
-  console.log('📞 Trying phone formats:', phoneFormats);
+  // Add additional formats for South African numbers
+  if (normalizedPhone.startsWith('+27')) {
+    phoneFormats.push(
+      normalizedPhone.replace('+27', '0'),  // 0832091122 (SA format)
+      normalizedPhone.substring(3)          // 832091122 (no country code)
+    );
+  }
   
-  for (const phoneFormat of phoneFormats) {
-    if (!phoneFormat) continue;
-    
+  // Remove duplicates and empty strings - avoiding Set to prevent TS2802 error
+  const uniqueFormats = phoneFormats.filter((value, index, self) => 
+    value && self.indexOf(value) === index
+  );
+  
+  console.log('📞 Trying phone formats:', uniqueFormats);
+  
+  for (const phoneFormat of uniqueFormats) {
     try {
       console.log(`🔍 Searching for customer with phone: "${phoneFormat}"`);
       const customersRef = collection(db, 'customers');
@@ -111,11 +176,11 @@ export const findCustomerByPhone = async (phone: string): Promise<CustomerRecord
       const querySnapshot = await getDocs(q);
       
       if (!querySnapshot.empty) {
-        const doc = querySnapshot.docs[0];
-        const customerData = doc.data();
+        const docSnapshot = querySnapshot.docs[0];
+        const customerData = docSnapshot.data();
         
         const customer: CustomerRecord = {
-          id: doc.id,
+          id: docSnapshot.id,
           phone: customerData.phone,
           name: customerData.name,
           email: customerData.email,
@@ -125,7 +190,24 @@ export const findCustomerByPhone = async (phone: string): Promise<CustomerRecord
           updatedAt: customerData.updatedAt
         };
         
-        console.log('✅ Customer found:', customer);
+        console.log('✅ Customer found with phone format:', phoneFormat);
+        console.log('📋 Customer data:', customer);
+        
+        // If the phone format that worked is different from what's stored,
+        // update the customer record with the normalized format for consistency
+        if (normalizedPhone && customerData.phone !== normalizedPhone) {
+          try {
+            console.log(`📝 Updating customer record with normalized phone: ${normalizedPhone}`);
+            const customerRef = doc(db, 'customers', customer.id);
+            await setDoc(customerRef, {
+              phone: normalizedPhone,
+              updatedAt: new Date()
+            }, { merge: true });
+          } catch (updateError) {
+            console.error('❌ Error updating customer with normalized phone:', updateError);
+          }
+        }
+        
         return customer;
       } else {
         console.log(`ℹ️ No customer found with phone format: "${phoneFormat}"`);
@@ -151,6 +233,19 @@ export const linkCustomerToUser = async (customerId: string, userId: string): Pr
   console.log('🔗 Starting customer-user linking transaction...', { customerId, userId });
   
   try {
+    // First check if user document exists and has a phone number
+    let userPhone: string | null = null;
+    try {
+      const userRef = doc(db, 'users', userId);
+      const userDoc = await getDoc(userRef);
+      
+      if (userDoc.exists()) {
+        userPhone = userDoc.data().phone || null;
+      }
+    } catch (error) {
+      console.error('❌ Error checking user document:', error);
+    }
+    
     await runTransaction(db, async (transaction) => {
       // Get customer document reference
       const customerRef = doc(db, 'customers', customerId);
@@ -168,15 +263,21 @@ export const linkCustomerToUser = async (customerId: string, userId: string): Pr
       // Check if already linked to different user
       if (customerData.userId && customerData.userId !== userId) {
         console.warn('⚠️ Customer already linked to different user:', customerData.userId);
-        // Optionally throw error or handle as needed
+        // We'll still update it with the new userId
       }
       
       // Update customer record with user ID
-      const updateData = {
+      const updateData: any = {
         userId: userId,
         linkedAt: new Date(),
         updatedAt: new Date()
       };
+      
+      // If user has a phone number and customer doesn't, add it
+      if (userPhone && (!customerData.phone || customerData.phone.trim() === '')) {
+        console.log(`📱 Adding user's phone number to customer record: ${userPhone}`);
+        updateData.phone = userPhone;
+      }
       
       transaction.update(customerRef, updateData);
       console.log('✅ Customer record updated in transaction:', updateData);
@@ -199,17 +300,59 @@ export const linkCustomerToUser = async (customerId: string, userId: string): Pr
  */
 export const linkUserToCustomer = async (userId: string, customerId: string): Promise<boolean> => {
   try {
+    // Get customer data first to get the phone number
+    let customerPhone: string | null = null;
+    try {
+      const customerRef = doc(db, 'customers', customerId);
+      const customerDoc = await getDoc(customerRef);
+      
+      if (customerDoc.exists()) {
+        customerPhone = customerDoc.data().phone || null;
+      }
+    } catch (error) {
+      console.error('❌ Error getting customer data:', error);
+    }
+    
     // Link customer to user
     await linkCustomerToUser(customerId, userId);
     
-    // Update user record with customer ID
+    // Update user record with customer ID and phone (if available)
     const userRef = doc(db, 'users', userId);
-    await setDoc(userRef, {
+    const updateData: any = {
       linkedCustomerId: customerId,
       updatedAt: Timestamp.now()
-    }, { merge: true });
+    };
+    
+    // If customer has a phone number, add it to user record
+    if (customerPhone) {
+      updateData.phone = customerPhone;
+    }
+    
+    await setDoc(userRef, updateData, { merge: true });
     
     console.log('✅ User record updated with linkedCustomerId:', customerId);
+    
+    // Double-check the linking worked by verifying both records
+    try {
+      // Check user record
+      const updatedUserDoc = await getDoc(userRef);
+      if (!updatedUserDoc.exists() || updatedUserDoc.data().linkedCustomerId !== customerId) {
+        console.warn('⚠️ User record not properly updated with customer ID');
+      }
+      
+      // Check customer record
+      const customerRef = doc(db, 'customers', customerId);
+      const updatedCustomerDoc = await getDoc(customerRef);
+      if (!updatedCustomerDoc.exists() || updatedCustomerDoc.data().userId !== userId) {
+        console.warn('⚠️ Customer record not properly updated with user ID');
+        
+        // Try to fix it
+        await setDoc(customerRef, { userId: userId, updatedAt: Timestamp.now() }, { merge: true });
+      }
+    } catch (error) {
+      console.error('❌ Error verifying link:', error);
+    }
+    
     return true;
   } catch (error) {
     console.error('❌ Error linking user to customer:', error);
@@ -249,6 +392,11 @@ export const addCustomerToBusiness = async (
         updatedAt: Timestamp.now()
       }, { merge: true });
       
+      // If userId is provided, also update that
+      if (customerData.userId) {
+        await linkUserToCustomer(customerData.userId, existingCustomer.id);
+      }
+      
       return existingCustomer.id;
     }
     
@@ -269,6 +417,18 @@ export const addCustomerToBusiness = async (
     
     await setDoc(newCustomerRef, newCustomer);
     console.log('✅ Created new customer record:', newCustomerRef.id);
+    
+    // If userId is provided, update the user record as well
+    if (customerData.userId) {
+      const userRef = doc(db, 'users', customerData.userId);
+      await setDoc(userRef, {
+        linkedCustomerId: newCustomerRef.id,
+        phone: normalizedPhone,
+        updatedAt: Timestamp.now()
+      }, { merge: true });
+      
+      console.log('✅ Updated user record with customer link and phone');
+    }
     
     return newCustomerRef.id;
   } catch (error) {

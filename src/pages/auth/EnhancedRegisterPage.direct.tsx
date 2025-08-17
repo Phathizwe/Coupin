@@ -14,6 +14,7 @@ import { logAnalyticsEvent } from '../../config/firebase';
 import { ensureUserHasBusiness } from '../../services/businessRegistrationService';
 import { diagnoseBusiness } from '../../utils/registrationDiagnostics';
 import { normalizePhoneNumber } from '../../utils/phoneUtils';
+import { saveNewUserRecord } from '../../services/userRegistrationService';
 
 /**
  * Direct implementation of enhanced registration page that bypasses the auth hook
@@ -85,25 +86,25 @@ const EnhancedRegisterPageDirect: React.FC = () => {
       // Normalize phone for consistent lookups
       const normalizedPhone = phone ? normalizePhoneNumber(phone) : undefined;
 
-      // Create user document in Firestore
-      const userData: any = {
-        uid: user.uid,
-        email: user.email,
-        displayName: name,
-        role: role,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
-      };
-
-      if (normalizedPhone) {
-        userData.phoneNumber = normalizedPhone;
-      }
-
-      await setDoc(doc(db, 'users', user.uid), userData);
-      console.log(`[DirectRegister] User document created in Firestore`);
-
-      // For business users, create a business document
+      // For business users, use the old approach
       if (role === 'business') {
+        // Create user document in Firestore
+        const userData: any = {
+          uid: user.uid,
+          email: user.email,
+          displayName: name,
+          role: role,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        };
+
+        if (normalizedPhone) {
+          userData.phoneNumber = normalizedPhone;
+        }
+
+        await setDoc(doc(db, 'users', user.uid), userData);
+        console.log(`[DirectRegister] User document created in Firestore`);
+
         try {
           const businessId = await ensureUserHasBusiness(user.uid, name);
           console.log(`[DirectRegister] Business created with ID: ${businessId}`);
@@ -117,6 +118,18 @@ const EnhancedRegisterPageDirect: React.FC = () => {
         } catch (businessError) {
           console.error('[DirectRegister] Error creating business:', businessError);
         }
+      } 
+      // For customer users, use the new approach
+      else {
+        // Save the user record without looking up a customer
+        await saveNewUserRecord(user.uid, {
+          email: user.email,
+          displayName: name,
+          phoneNumber: normalizedPhone,
+          role: 'customer'
+        });
+        
+        console.log(`[DirectRegister] Customer user document created in Firestore`);
       }
 
       return user;
@@ -147,7 +160,9 @@ const EnhancedRegisterPageDirect: React.FC = () => {
         await updateLeadRecord(values.email);
       }
 
-      // For business users, run diagnostics
+      toast.success('Account created successfully!');
+
+      // For business users, run diagnostics and redirect to dashboard
       if (accountType === 'business') {
         try {
           console.log('[EnhancedRegisterPage] Running business diagnostics');
@@ -155,20 +170,17 @@ const EnhancedRegisterPageDirect: React.FC = () => {
         } catch (diagError) {
           console.error('[EnhancedRegisterPage] Diagnostics error:', diagError);
         }
+        
+        // Use navigate instead of window.location to ensure proper routing
+        navigate('/business/dashboard');
+      } 
+      // For customer users, redirect to the new success page
+      else {
+        console.log('[EnhancedRegisterPage] Redirecting to customer success page');
+        
+        // IMPORTANT: Use navigate instead of window.location for proper routing
+        navigate('/customer-success');
       }
-
-      toast.success('Account created successfully!');
-
-      // Instead of trying to update the auth context directly,
-      // we'll force a full page reload to trigger the auth state listener
-      // This will ensure the auth context is properly updated
-
-      // Store the destination in session storage
-      const destination = accountType === 'business' ? '/business/dashboard' : '/customer/dashboard';
-      sessionStorage.setItem('auth_redirect', destination);
-
-      // Reload the page to trigger the auth state listener
-      window.location.href = destination;
 
     } catch (error: any) {
       console.error('[EnhancedRegisterPage] Registration error:', error);
@@ -227,13 +239,23 @@ const EnhancedRegisterPageDirect: React.FC = () => {
         updatedAt: serverTimestamp()
       });
 
-      // For business users, ensure business document exists
+      // For business users, ensure business document exists and redirect to dashboard
       if (accountType === 'business') {
         try {
           await ensureUserHasBusiness(userId, auth.currentUser.displayName || 'My Business');
         } catch (error) {
           console.error(`[EnhancedRegisterPage] Error setting up business:`, error);
         }
+        
+        // Use navigate instead of window.location
+        navigate('/business/dashboard');
+      } 
+      // For customer users, redirect to the success page
+      else {
+        console.log(`[EnhancedRegisterPage] Redirecting to customer success page after ${provider} sign-in`);
+        
+        // Use navigate instead of window.location
+        navigate('/customer-success');
       }
 
       // Update lead record if we have an email
@@ -242,13 +264,6 @@ const EnhancedRegisterPageDirect: React.FC = () => {
       }
 
       toast.success(`Signed in successfully with ${provider}!`);
-
-      // Store the destination in session storage
-      const destination = accountType === 'business' ? '/business/dashboard' : '/customer/dashboard';
-      sessionStorage.setItem('auth_redirect', destination);
-
-      // Reload the page to trigger the auth state listener
-      window.location.href = destination;
 
     } catch (error: any) {
       console.error(`[EnhancedRegisterPage] ${provider} sign-in error:`, error);

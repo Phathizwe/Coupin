@@ -60,6 +60,7 @@ import CouponsDebug from './pages/business/CouponsDebug';
 import { RegionalSettingsProvider } from './contexts/RegionalSettingsContext';
 import CurrencyManagement from './components/admin/CurrencyManagement';
 import CouponsPage from './customer/CouponsPage';
+import NewCustomerSuccessPage from './customer/NewCustomerSuccessPage';
 
 const ErrorBoundary: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Error boundary implementation
@@ -152,6 +153,8 @@ const App: React.FC = () => {
                 <Route path="loyalty" element={<LoyaltyProgramsPage />} />
                 <Route path="stores" element={<StoresPage />} />
                 <Route path="store/:id" element={<StoreDetailPage />} />
+                {/* Add the new route that matches the URL pattern being used */}
+                <Route path="stores/:id" element={<StoreDetailPage />} />
                 <Route path="profile" element={<ProfilePage />} />
               </Route>
               
@@ -159,6 +162,9 @@ const App: React.FC = () => {
               <Route path="/store" element={<ProtectedRoute requiredRole="customer"><SimpleStoreLayout /></ProtectedRoute>}>
                 <Route path="" element={<SimplifiedStoreDashboard />} />
               </Route>
+              
+              {/* New customer success page */}
+              <Route path="/customer-success" element={<ProtectedRoute requiredRole="customer"><NewCustomerSuccessPage /></ProtectedRoute>} />
               
               <Route path="*" element={<NotFoundPage />} />
             </Routes>

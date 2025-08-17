@@ -31,6 +31,12 @@ export const fetchCustomerCoupons = async (
   pageSize = 10
 ): Promise<CouponResult> => {
   try {
+    // Validate the user ID to prevent unnecessary lookups
+    if (!userId || typeof userId !== 'string' || userId.trim() === '') {
+      console.warn('Invalid user ID provided to fetchCustomerCoupons');
+      return { coupons: [], lastDoc: null };
+    }
+    
     console.log('Fetching coupons for user:', userId);
     
     // First, check if the user is linked to a customer profile
@@ -63,7 +69,8 @@ export const fetchCustomerCoupons = async (
     };
   } catch (error) {
     console.error('Error fetching customer coupons:', error);
-    throw error;
+    // Return empty result instead of throwing to prevent cascading failures
+    return { coupons: [], lastDoc: null };
   }
 };
 

@@ -1,9 +1,12 @@
-import { AuthContext, AuthProvider } from './SafeAuthContext';
+/**
+ * Authentication services index
+ * Exports all auth-related functions from modular services
+ */
 
-// Export enhanced auth services
+// Export all functions from the auth services
 export {
-  registerUser,
   loginWithEmail,
+  registerUser,
   logoutUser,
   resetUserPassword,
   socialSignIn,
@@ -11,11 +14,16 @@ export {
   fetchUserBusinesses,
   checkForInvitations,
   checkRedirectResult,
-  handleUserData
-} from './enhancedAuthServices';
+  handleUserData,
+  debugUserData
+} from './authServices';
 
-// Export types
+// Export types using 'export type' for TypeScript isolated modules
 export type { ExtendedUser } from './types';
 
-export { AuthContext, AuthProvider };
-export default AuthContext;
+// Export phone registration utilities for direct access
+export {
+  processPhoneNumber,
+  findCustomerByPhone,
+  handleCustomerRecord
+} from './services/phoneRegistrationService';

@@ -61,6 +61,7 @@ const DashboardPage = () => {
         setIsLoading(true);
         try {
           const stats = await getSavingsStats(user.uid);
+          // Use the savingsStreak property that we added to the SavingsStats interface
           setSavingsStreak(stats.savingsStreak);
           setTotalSaved(stats.totalSaved);
           setMonthlySaved(stats.monthlySaved);
