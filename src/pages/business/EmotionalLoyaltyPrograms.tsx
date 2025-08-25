@@ -11,7 +11,6 @@ import { LoyaltyProgram, LoyaltyReward } from '../../types';
 import DetailedLoyalty from '../../components/loyalty2/DetailedLoyalty';
 import SimpleLoyalty from '../../components/loyalty2/SimpleLoyalty';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
-import EmergencyLoyaltyFix from '../../components/loyalty/EmergencyLoyaltyFix';
 import { toast } from 'react-toastify';
 
 const EmotionalLoyaltyPrograms: React.FC = () => {
@@ -132,7 +131,7 @@ const EmotionalLoyaltyPrograms: React.FC = () => {
     );
   }
 
-  // Show emergency fix if no program exists
+  // Show program creation UI if no program exists
   if (!loyaltyProgram) {
     return (
       <div>
@@ -141,9 +140,8 @@ const EmotionalLoyaltyPrograms: React.FC = () => {
           {/* Remove ViewToggle from here */}
         </div>
         <p className="text-gray-600 mb-8">
-          It looks like you don't have a loyalty program set up yet or there might be an issue with your existing program.
+          It looks like you don't have a loyalty program set up yet. Let's create one to start rewarding your customers.
         </p>
-        <EmergencyLoyaltyFix />
         
         {viewMode === 'simple' ? (
           <SimpleLoyalty

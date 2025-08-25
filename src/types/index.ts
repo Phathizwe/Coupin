@@ -51,6 +51,8 @@ export interface Customer {
   notes?: string;
   tags?: string[];
   loyaltyPoints?: number;
+  loyaltyProgramId?: string; // Added for loyalty program membership
+  lastLoyaltyActivity?: any; // Added for tracking loyalty activity
   userId?: string; // If the customer has a Coupin account
 }
 

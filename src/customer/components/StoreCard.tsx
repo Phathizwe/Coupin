@@ -15,11 +15,23 @@ const StoreCard: React.FC<StoreCardProps> = ({ store }) => {
 
   // Handler for View Store button
   const handleViewStore = () => {
+    console.log("Navigating to store with ID:", store.id);
+    if (!store.id) {
+      console.error("Store ID is missing or undefined");
+      // Show an error toast or alert instead of navigating
+      alert("Unable to view store details: Store ID is missing");
+      return;
+    }
     navigate(`/customer/stores/${store.id}`);
   };
 
   // Handler for View Coupons button
   const handleViewCoupons = () => {
+    if (!store.id) {
+      console.error("Store ID is missing or undefined");
+      alert("Unable to view coupons: Store ID is missing");
+      return;
+    }
     navigate(`/customer/coupons?businessId=${store.id}`);
   };
 

@@ -14,18 +14,22 @@ const StoreDetailPage: React.FC = () => {
   useEffect(() => {
     const loadStoreDetails = async () => {
       if (!storeId) {
+        console.error('Store ID is missing in URL parameters');
         setError('Store ID is missing');
         setLoading(false);
         return;
       }
 
       try {
+        console.log('Fetching store details for ID:', storeId);
         setLoading(true);
         const storeDetails = await fetchBusinessById(storeId);
         
         if (storeDetails) {
+          console.log('Store details loaded successfully:', storeDetails.businessName);
           setStore(storeDetails);
         } else {
+          console.error('Store not found for ID:', storeId);
           setError('Store not found');
         }
       } catch (err) {
