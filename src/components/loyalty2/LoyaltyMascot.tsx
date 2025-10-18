@@ -2,10 +2,10 @@ import React, { useState, useEffect } from 'react';
 
 interface LoyaltyMascotProps {
   mood: 'happy' | 'excited' | 'neutral';
-  small?: boolean;
+  size?: 'small' | 'medium' | 'large';
 }
 
-const LoyaltyMascot: React.FC<LoyaltyMascotProps> = ({ mood, small = false }) => {
+const LoyaltyMascot: React.FC<LoyaltyMascotProps> = ({ mood, size = 'medium' }) => {
   const [animation, setAnimation] = useState('');
   
   useEffect(() => {
@@ -43,11 +43,19 @@ const LoyaltyMascot: React.FC<LoyaltyMascotProps> = ({ mood, small = false }) =>
     }
   };
   
+  const sizeClasses = {
+    small: 'w-10 h-10 text-xl',
+    medium: 'w-16 h-16 text-3xl',
+    large: 'w-20 h-20 text-4xl'
+  };
+  
+  const [containerClass, textClass] = sizeClasses[size].split(' ');
+  
   return (
     <div 
-      className={`${small ? 'w-10 h-10' : 'w-16 h-16'} bg-gradient-to-br from-purple-100 to-indigo-100 rounded-full flex items-center justify-center shadow-md ${animation}`}
+      className={`${containerClass} bg-gradient-to-br from-purple-100 to-indigo-100 rounded-full flex items-center justify-center shadow-md ${animation}`}
     >
-      <span className={`${small ? 'text-xl' : 'text-3xl'}`}>
+      <span className={textClass}>
         {getMascotEmoji()}
       </span>
     </div>

@@ -12,7 +12,7 @@ import LoyaltyMembersList from './LoyaltyMembersList';
 import DetailedLoyaltyActions from './DetailedLoyaltyActions';
 import CreateLoyaltyProgramModal from './EmotionalCreateLoyaltyModal';
 import LoyaltyScanModal from './LoyaltyScanModal';
-import LoyaltySendCouponModal from './LoyaltySendCouponModal';
+import LoyaltyInviteMemberModal from './LoyaltyInviteMemberModal';
 import LoyaltyRewardModal from './LoyaltyRewardModal';
 
 interface DetailedLoyaltyProps {
@@ -42,7 +42,7 @@ const DetailedLoyalty: React.FC<DetailedLoyaltyProps> = ({
   // Modal state management
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showScanModal, setShowScanModal] = useState(false);
-  const [showCouponModal, setShowCouponModal] = useState(false);
+  const [showInviteMemberModal, setShowInviteMemberModal] = useState(false);
   const [showRewardModal, setShowRewardModal] = useState(false);
   
   // UI state management
@@ -88,7 +88,7 @@ const DetailedLoyalty: React.FC<DetailedLoyaltyProps> = ({
     
     // Close any open modals
     setShowScanModal(false);
-    setShowCouponModal(false);
+    setShowInviteMemberModal(false);
     setShowRewardModal(false);
     
     // Reset states after animation
@@ -152,19 +152,8 @@ const DetailedLoyalty: React.FC<DetailedLoyaltyProps> = ({
 
   return (
     <div className="space-y-6 animate-fadeIn">
-      {/* Back button */}
-      <div className="flex items-center mb-4">
-        <button
-          onClick={onBackClick}
-          className="flex items-center text-gray-600 hover:text-gray-900 transition-colors"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" viewBox="0 0 20 20" fill="currentColor">
-            <path fillRule="evenodd" d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L5.414 9H17a1 1 0 110 2H5.414l4.293 4.293a1 1 0 010 1.414z" clipRule="evenodd" />
-          </svg>
-          <span>Back to Dashboard</span>
-        </button>
-      </div>
-
+      {/* Removed the "Back to Dashboard" button and header to eliminate duplication */}
+      
       <div className="flex justify-between">
         <div className="flex-1">
           <LoyaltyHeader
@@ -182,7 +171,7 @@ const DetailedLoyalty: React.FC<DetailedLoyaltyProps> = ({
         <DetailedLoyaltyActions
           program={loyaltyProgram}
           onScanClick={() => setShowScanModal(true)}
-          onSendCouponClick={() => setShowCouponModal(true)}
+          onSendCouponClick={() => setShowInviteMemberModal(true)}
           onRewardClick={() => setShowRewardModal(true)}
         />
       )}
@@ -286,10 +275,10 @@ const DetailedLoyalty: React.FC<DetailedLoyaltyProps> = ({
         />
       )}
 
-      {showCouponModal && loyaltyProgram && (
-        <LoyaltySendCouponModal
+      {showInviteMemberModal && loyaltyProgram && (
+        <LoyaltyInviteMemberModal
           program={loyaltyProgram}
-          onClose={() => setShowCouponModal(false)}
+          onClose={() => setShowInviteMemberModal(false)}
           onSuccess={handleActionSuccess}
         />
       )}

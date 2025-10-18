@@ -1,188 +1,120 @@
-import { collection, query, where, getDocs, doc, getDoc } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, query, where } from 'firebase/firestore';
 import { db } from '../../config/firebase';
-import { LoyaltyProgram, LoyaltyReward, LoyaltyTier } from '../../types';
+import { Customer, LoyaltyProgram } from '../../types';
 
 /**
- * Fetch loyalty programs for a specific customer
- * @param userId The user ID of the customer
- * @returns Array of loyalty programs with business details
+ * Service for handling customer loyalty program functionality
  */
-export const fetchCustomerLoyaltyPrograms = async (userId: string) => {
+export const customerLoyaltyService = {
+  /**
+   * Get all loyalty programs for a customer
+   */
+  getCustomerLoyaltyPrograms: async (userId: string): Promise<LoyaltyProgram[]> => {
+    try {
+      console.log('Looking up loyalty programs for user:', userId);
+      
+      // First, find the customer record by userId
+      const customersRef = collection(db, 'customers');
+      const customerQuery = query(customersRef, where('userId', '==', userId));
+      const customerSnapshot = await getDocs(customerQuery);
+    
+      if (customerSnapshot.empty) {
+        console.log('No customer record found for userId:', userId);
+        return [];
+      }
+      
+      // Get the customer data
+      const customerDoc = customerSnapshot.docs[0];
+      const customer = { id: customerDoc.id, ...customerDoc.data() } as Customer;
+      console.log('Found customer record:', customer);
+      
+      // APPROACH 1: Try to find by business ID (similar to how coupons work)
   try {
-    // First, get the customer document to find linked businesses
-    const customersRef = collection(db, 'customers');
-    const q = query(customersRef, where('userId', '==', userId));
-    const querySnapshot = await getDocs(q);
-    
-    if (querySnapshot.empty) {
-      return [];
-    }
-    
-    // Get the customer document
-    const customerDoc = querySnapshot.docs[0];
-    const customerData = customerDoc.data();
-    
-    // Get all the businesses where the customer has loyalty points
-    const businessIds: string[] = [];
-    
-    // If the customer has visited businesses, add them
-    if (customerData.visits && Array.isArray(customerData.visits)) {
-      customerData.visits.forEach((visit: any) => {
-        if (visit.businessId && !businessIds.includes(visit.businessId)) {
-          businessIds.push(visit.businessId);
-        }
-      });
-    }
-    
-    // If the customer has loyalty points directly, add those businesses
-    if (customerData.loyaltyPoints && typeof customerData.loyaltyPoints === 'object') {
-      Object.keys(customerData.loyaltyPoints).forEach(businessId => {
-        if (!businessIds.includes(businessId)) {
-          businessIds.push(businessId);
-        }
-      });
-    }
-    
-    if (businessIds.length === 0) {
-      return [];
-    }
-    
-    // Fetch loyalty programs for these businesses
-    const loyaltyProgramsRef = collection(db, 'loyaltyPrograms');
-    const loyaltyProgramsQuery = query(loyaltyProgramsRef, where('businessId', 'in', businessIds));
-    const loyaltyProgramsSnapshot = await getDocs(loyaltyProgramsQuery);
-    
-    // Prepare to fetch business details
-    const programs: Array<LoyaltyProgram & { 
-      businessName?: string;
-      businessLogo?: string;
-      businessColors?: {
-        primary: string;
-        secondary: string;
-      };
-      customerPoints?: number;
-      customerVisits?: number;
-      customerTier?: string;
-    }> = [];
-    
-    // Process each program and add business details
-    for (const programDoc of loyaltyProgramsSnapshot.docs) {
-      const programData = programDoc.data() as LoyaltyProgram;
-      
-      // Fetch business details
-      const businessRef = doc(db, 'businesses', programData.businessId);
-      const businessDoc = await getDoc(businessRef);
-      
-      if (businessDoc.exists()) {
-        const businessData = businessDoc.data();
-        
-        // Get customer's loyalty points for this business
-        let customerPoints = 0;
-        let customerVisits = 0;
-        let customerTier = '';
-        
-        if (customerData.loyaltyPoints && customerData.loyaltyPoints[programData.businessId]) {
-          customerPoints = customerData.loyaltyPoints[programData.businessId];
-        }
-        
-        if (customerData.visits) {
-          customerVisits = customerData.visits.filter(
-            (visit: any) => visit.businessId === programData.businessId
-          ).length;
-        }
-        
-        // Determine customer tier if it's a tiered program
-        if (programData.type === 'tiered' && programData.tiers && programData.tiers.length > 0) {
-          // Sort tiers by threshold (ascending)
-          const sortedTiers = [...programData.tiers].sort((a, b) => a.threshold - b.threshold);
+        const businessId = customer.businessId;
+        if (businessId) {
+          console.log('Looking up loyalty programs by business ID:', businessId);
           
-          // Find the highest tier the customer qualifies for
-          for (let i = sortedTiers.length - 1; i >= 0; i--) {
-            if (customerPoints >= sortedTiers[i].threshold) {
-              customerTier = sortedTiers[i].name;
-              break;
+          const programsRef = collection(db, 'loyaltyPrograms');
+          const programsQuery = query(
+            programsRef,
+            where('businessId', '==', businessId)
+          );
+          
+          const programsSnapshot = await getDocs(programsQuery);
+          
+          if (!programsSnapshot.empty) {
+            const programs = programsSnapshot.docs.map(doc => ({ 
+              id: doc.id, 
+              ...doc.data() 
+            })) as LoyaltyProgram[];
+            
+            console.log('Found loyalty programs by business ID:', programs);
+            
+            // Filter for active programs
+            const activePrograms = programs.filter(program => program.active !== false);
+            if (activePrograms.length > 0) {
+              return activePrograms;
             }
           }
-          
-          // If no tier found, set to the lowest tier
-          if (!customerTier && sortedTiers.length > 0) {
-            customerTier = sortedTiers[0].name;
-          }
         }
-        
-        programs.push({
-          ...programData,
-          id: programDoc.id,
-          businessName: businessData.businessName,
-          businessLogo: businessData.logo,
-          businessColors: businessData.colors,
-          customerPoints,
-          customerVisits,
-          customerTier
-        });
+      } catch (error) {
+        console.error('Error querying loyalty programs by business ID:', error);
       }
+      
+      // APPROACH 2: Check if the customer has a loyaltyProgramId
+      if (customer.loyaltyProgramId) {
+        console.log('Looking up loyalty program with ID:', customer.loyaltyProgramId);
+        
+        // Get the loyalty program directly by ID
+        try {
+          const programRef = doc(db, 'loyaltyPrograms', customer.loyaltyProgramId);
+          const programSnapshot = await getDoc(programRef);
+          
+          if (programSnapshot.exists()) {
+            const program = { id: programSnapshot.id, ...programSnapshot.data() } as LoyaltyProgram;
+            console.log('Found loyalty program by direct ID lookup:', program);
+            
+            // Only return active programs
+            if (program.active !== false) {
+              return [program];
     }
-    
-    return programs;
-  } catch (error) {
-    console.error('Error fetching customer loyalty programs:', error);
-    throw error;
+          }
+    } catch (error) {
+          console.error('Error getting loyalty program by ID:', error);
   }
-};
-
-/**
- * Fetch rewards for a specific loyalty program
- * @param programId The ID of the loyalty program
- * @returns Array of loyalty rewards
- */
-export const fetchLoyaltyRewards = async (programId: string) => {
-  try {
-    const rewardsRef = collection(db, 'loyaltyRewards');
-    const q = query(rewardsRef, where('programId', '==', programId));
-    const querySnapshot = await getDocs(q);
-    
-    const rewards: LoyaltyReward[] = [];
-    
-    querySnapshot.forEach((doc) => {
-      rewards.push({
-        ...doc.data() as LoyaltyReward,
-        id: doc.id
-      });
-    });
-    
-    return rewards;
-  } catch (error) {
-    console.error('Error fetching loyalty rewards:', error);
-    throw error;
-  }
-};
-
-/**
- * Get customer's loyalty points for a specific business
- * @param userId The user ID of the customer
- * @param businessId The business ID
- * @returns The number of loyalty points
- */
-export const getCustomerLoyaltyPoints = async (userId: string, businessId: string) => {
-  try {
-    // Get the customer document
-    const customersRef = collection(db, 'customers');
-    const q = query(customersRef, where('userId', '==', userId));
-    const querySnapshot = await getDocs(q);
-    
-    if (querySnapshot.empty) {
+      }
+      
+      console.log('No active loyalty programs found for customer');
+      return [];
+    } catch (error) {
+      console.error('Error getting customer loyalty programs:', error);
+      return [];
+    }
+  },
+  
+  /**
+   * Get a customer's loyalty points for a specific program
+   */
+  getCustomerLoyaltyPoints: async (customerId: string, programId: string): Promise<number> => {
+    try {
+      const customerRef = doc(db, 'customers', customerId);
+      const customerSnapshot = await getDoc(customerRef);
+      
+      if (!customerSnapshot.exists()) {
+        return 0;
+      }
+      
+      const customer = customerSnapshot.data() as Customer;
+      
+      // Check if the customer is in this loyalty program
+      if (customer.loyaltyProgramId !== programId) {
+        return 0;
+      }
+      
+      return customer.loyaltyPoints || 0;
+    } catch (error) {
+      console.error('Error getting customer loyalty points:', error);
       return 0;
     }
-    
-    const customerData = querySnapshot.docs[0].data();
-    
-    if (customerData.loyaltyPoints && customerData.loyaltyPoints[businessId]) {
-      return customerData.loyaltyPoints[businessId];
-    }
-    
-    return 0;
-  } catch (error) {
-    console.error('Error getting customer loyalty points:', error);
-    return 0;
   }
 };

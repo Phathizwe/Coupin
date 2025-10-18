@@ -113,8 +113,19 @@ const EnhancedLoyaltyPrograms: React.FC = () => {
 
   return (
     <div className="container mx-auto px-4 py-6">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Loyalty Program</h1>
+      {/* Only showing the Edit Program button, removed the duplicate header and back button */}
+      <div className="flex justify-end mb-6">
+        {loyaltyProgram && (
+          <button
+            onClick={() => setIsModalOpen(true)}
+            className="bg-purple-600 hover:bg-purple-700 text-white font-medium py-2 px-4 rounded-md flex items-center"
+          >
+            Edit Program
+            <svg className="w-5 h-5 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+            </svg>
+          </button>
+        )}
         {!loyaltyProgram && (
           <button
             onClick={() => setIsModalOpen(true)}
@@ -194,7 +205,7 @@ const EnhancedLoyaltyPrograms: React.FC = () => {
       {/* Create Program Modal */}
       {isModalOpen && (
         <CreateLoyaltyProgramModal
-          initialData={undefined}
+          initialData={loyaltyProgram || undefined}
           onSave={handleProgramSaved}
           onCancel={() => setIsModalOpen(false)}
         />
