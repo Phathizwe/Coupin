@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../config/firebase';
 import { LoyaltyProgram } from '../../types';
@@ -19,6 +19,7 @@ const LoyaltyProgramPage: React.FC = () => {
   const [showScanModal, setShowScanModal] = useState(false);
   const [showRewardModal, setShowRewardModal] = useState(false);
   const { view } = useViewToggle();
+  const navigate = useNavigate();
   
   useEffect(() => {
     const fetchProgram = async () => {
@@ -55,6 +56,10 @@ const LoyaltyProgramPage: React.FC = () => {
     }
   };
 
+  const handleBackClick = () => {
+    navigate('/business/dashboard');
+  };
+
   if (loading) {
     return <LoadingSpinner />;
   }
@@ -73,7 +78,7 @@ const LoyaltyProgramPage: React.FC = () => {
           onProgramSaved={() => {}}
           onRewardsChange={() => {}}
           showCelebration={false}
-          onBackClick={() => {}}
+          onBackClick={handleBackClick}
         />
       ) : (
         <SimpleLoyalty 
@@ -81,6 +86,7 @@ const LoyaltyProgramPage: React.FC = () => {
           onInviteMember={() => setShowInviteModal(true)}
           onScanQR={() => setShowScanModal(true)}
           onReward={() => setShowRewardModal(true)}
+          onBackClick={handleBackClick}
         />
       )}
       
