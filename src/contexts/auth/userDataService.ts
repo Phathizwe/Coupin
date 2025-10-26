@@ -49,7 +49,9 @@ export const loadUserData = async (
         businessId: currentBusinessId || undefined, // Don't set empty strings
         businesses: validBusinesses,
         role: userData.role || 'customer', // Default to customer if no role is set
-        currentBusinessId: currentBusinessId || undefined
+        currentBusinessId: currentBusinessId || undefined,
+        phoneNumber: userData.phoneNumber || firebaseUser.phoneNumber, // Include phone number from Firestore
+        displayName: userData.displayName || firebaseUser.displayName   // Include display name from Firestore
       } as ExtendedUser;
 
       console.log('Created extended user:', {
