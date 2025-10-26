@@ -8,6 +8,7 @@ interface LoyaltyHeaderProps {
   showBackButton?: boolean;
   backUrl?: string;
   mascotMood?: 'happy' | 'excited' | 'neutral';
+  onBackClick?: () => void;
 }
 
 const LoyaltyHeader: React.FC<LoyaltyHeaderProps> = ({ 
@@ -15,16 +16,25 @@ const LoyaltyHeader: React.FC<LoyaltyHeaderProps> = ({
   subtitle, 
   showBackButton = true, 
   backUrl = '/business/dashboard',
-  mascotMood = 'happy'
+  mascotMood = 'happy',
+  onBackClick
 }) => {
   const navigate = useNavigate();
+  
+  const handleBackClick = () => {
+    if (onBackClick) {
+      onBackClick();
+    } else {
+      navigate(backUrl);
+    }
+  };
   
   return (
     <div className="mb-6">
       {showBackButton && (
         <div className="mb-4 flex items-center">
           <button 
-            onClick={() => navigate(backUrl)} 
+            onClick={handleBackClick} 
             className="flex items-center text-gray-600 hover:text-gray-900 transition-colors duration-200 group"
           >
             <svg 

@@ -1,5 +1,5 @@
 import React from 'react';
-import { LoyaltyProgram, LoyaltyReward } from '../../types';
+import { LoyaltyProgram } from '../../types';
 import { useNavigate } from 'react-router-dom';
 
 // Import emotional components
@@ -8,116 +8,55 @@ import LoyaltyPulse from './EmotionalComponents/LoyaltyPulse';
 import CelebrationStation from './EmotionalComponents/CelebrationStation';
 import LoyaltyJourney from './EmotionalComponents/LoyaltyJourney';
 import RewardsCelebration from './EmotionalComponents/RewardsCelebration';
-import LoyaltyMascot from './LoyaltyMascot';
 
-// Define a union type to handle both use cases
-interface ViewProps {
+// Simplified interface for view mode only
+interface SimpleLoyaltyProps {
   program: LoyaltyProgram;
   onInviteMember: () => void;
   onScanQR: () => void;
   onReward: () => void;
-}
-
-interface EditProps {
-  loyaltyProgram: LoyaltyProgram | null;
-  loyaltyRewards: LoyaltyReward[];
-  businessId: string;
-  onProgramSaved: (program: LoyaltyProgram) => void;
-  onRewardsChange: (rewards: LoyaltyReward[]) => void;
   onBackClick: () => void;
 }
 
-// Use type predicates to determine which props are being used
-function isViewProps(props: ViewProps | EditProps): props is ViewProps {
-  return 'program' in props && 'onInviteMember' in props;
-}
-
-type SimpleLoyaltyProps = ViewProps | EditProps;
-
-const SimpleLoyalty: React.FC<SimpleLoyaltyProps> = (props) => {
+const SimpleLoyalty: React.FC<SimpleLoyaltyProps> = ({ 
+  program, 
+  onInviteMember, 
+  onScanQR, 
+  onReward, 
+  onBackClick 
+}) => {
   const navigate = useNavigate();
   
-  // Handle both prop patterns
-  if (isViewProps(props)) {
-    // View mode (emotionally enhanced implementation)
-    const { program, onInviteMember, onScanQR, onReward } = props;
-    
-    return (
-      <div className="py-6 max-w-4xl mx-auto">
-        <LoyaltyHeader 
-          title="Loyalty Program" 
-          subtitle="Build meaningful relationships with your customers and watch them return again and again!"
-          showBackButton={true}
-          mascotMood="happy"
-        />
+  return (
+    <div className="py-6 max-w-4xl mx-auto">
+      <LoyaltyHeader 
+        title="Loyalty Program" 
+        subtitle="Build meaningful relationships with your customers and watch them return again and again!"
+        showBackButton={true}
+        backUrl="/business/dashboard"
+        mascotMood="happy"
+        onBackClick={onBackClick}
+      />
 
-        <LoyaltyPulse program={program} />
-        
-        <CelebrationStation 
-          onInviteMember={onInviteMember}
-          onScanQR={onScanQR}
-          onReward={onReward}
-        />
-        
-        <LoyaltyJourney 
-          program={program} 
-          onEditClick={(programId) => navigate(`/business/loyalty/edit/${programId}`)} 
-        />
-        
-        <RewardsCelebration program={program} />
-      </div>
-    );
-  } else {
-    // Edit mode (new implementation for EmotionalLoyaltyPrograms.tsx and Loyalty2.tsx)
-    const { loyaltyProgram, loyaltyRewards, businessId, onProgramSaved, onRewardsChange, onBackClick } = props;
-    
-    // Implement the edit mode UI here
-    // For now, let's create a placeholder UI that shows we're in edit mode
-    return (
-      <div className="py-6 max-w-4xl mx-auto">
-        <LoyaltyHeader 
-          title={loyaltyProgram ? "Edit Loyalty Program" : "Create Loyalty Program"}
-          subtitle={loyaltyProgram 
-            ? "Update your loyalty program settings below" 
-            : "Set up your loyalty program to reward your customers"}
-          showBackButton={true}
-          backUrl="/business/loyalty"
-          mascotMood={loyaltyProgram ? "happy" : "neutral"}
-        />
+      <LoyaltyPulse program={program} />
+      
+      <CelebrationStation 
+        onInviteMember={onInviteMember}
+        onScanQR={onScanQR}
+        onReward={onReward}
+      />
+      
+      <LoyaltyJourney 
+        program={program} 
+        onEditClick={(programId) => navigate(`/business/loyalty/edit/${programId}`)} 
+      />
+      
+      <RewardsCelebration program={program} />
+    </div>
+  );
+};
 
-        <div className="bg-white rounded-lg p-6 shadow-sm mb-8">
-          <p className="text-gray-600 mb-4">
-            This is a placeholder for the loyalty program editor. In a real implementation, 
-            this would contain form fields to edit the loyalty program.
-          </p>
-          
-          <button
-            onClick={() => {
-              // Create a sample program for demonstration
-              const sampleProgram: LoyaltyProgram = {
-                id: loyaltyProgram?.id || `program-${Date.now()}`,
-                name: "Sample Loyalty Program",
-                description: "A sample loyalty program",
-                businessId: businessId,
-                type: 'visits', // Required property
-                rewards: [], // Required property
-                active: true,
-                visitsRequired: 10,
-                createdAt: new Date().toISOString(),
-                updatedAt: new Date().toISOString()
-              };
-              onProgramSaved(sampleProgram);
-            }}
-            className="bg-gradient-to-r from-purple-600 to-indigo-600 text-white px-4 py-2 rounded-lg hover:from-purple-700 hover:to-indigo-700 transition-all duration-300 shadow-sm hover:shadow"
-          >
-            {loyaltyProgram ? "Update Program" : "Create Program"}
-          </button>
-        </div>
-        
-        {loyaltyProgram && (
-          <>
-            <h2 className="text-xl font-semibold text-gray-800 mb-4 flex items-center">
-              <span>Program Rewards</span>
+export default SimpleLoyalty;
               <span className="ml-2 text-yellow-500">🎁</span>
             </h2>
             

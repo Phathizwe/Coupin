@@ -164,36 +164,55 @@ const Loyalty2: React.FC = () => {
 
   // Render based on view mode
   if (viewMode === 'simple') {
-    // For simple mode, we need to check if we have a program and use ViewProps pattern
+    // For simple mode, always show the program view if it exists
     if (loyaltyProgram) {
       return (
         <SimpleLoyalty
           program={loyaltyProgram}
           onInviteMember={() => {
-            // Handle invite member action
-            console.log('Invite member action triggered');
+            navigate('/business/customers');
           }}
           onScanQR={() => {
-            // Handle scan QR action  
-            console.log('Scan QR action triggered');
+            navigate('/business/qr-code');
           }}
           onReward={() => {
-            // Handle reward action
-            console.log('Reward action triggered');
+            navigate('/business/loyalty/rewards');
           }}
+          onBackClick={() => navigate('/business/dashboard')}
         />
       );
     } else {
-      // No program exists, show simple creation interface
+      // No program exists, show creation message with back button
       return (
-        <SimpleLoyalty
-          loyaltyProgram={loyaltyProgram}
-          loyaltyRewards={loyaltyRewards}
-          businessId={effectiveBusinessId}
-          onProgramSaved={handleProgramSaved}
-          onRewardsChange={handleRewardsChange}
-          onBackClick={() => navigate('/business/dashboard')}
-        />
+        <div className="py-6 max-w-4xl mx-auto">
+          <div className="mb-4 flex items-center">
+            <button 
+              onClick={() => navigate('/business/dashboard')} 
+              className="flex items-center text-gray-600 hover:text-gray-900 transition-colors duration-200 group"
+            >
+              <svg 
+                className="w-5 h-5 mr-1 transform group-hover:-translate-x-1 transition-transform duration-200" 
+                fill="none" 
+                stroke="currentColor" 
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+              </svg>
+              Back to Dashboard
+            </button>
+          </div>
+          
+          <div className="bg-white rounded-lg p-8 shadow-sm text-center">
+            <h2 className="text-2xl font-bold text-gray-800 mb-4">No Loyalty Program Yet</h2>
+            <p className="text-gray-600 mb-6">Create your first loyalty program to start rewarding customers.</p>
+            <button
+              onClick={() => navigate('/business/loyalty')}
+              className="bg-gradient-to-r from-purple-600 to-indigo-600 text-white px-6 py-3 rounded-lg hover:from-purple-700 hover:to-indigo-700 transition-all duration-300"
+            >
+              Create Loyalty Program
+            </button>
+          </div>
+        </div>
       );
     }
   }
