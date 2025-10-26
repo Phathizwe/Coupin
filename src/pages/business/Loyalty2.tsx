@@ -164,16 +164,38 @@ const Loyalty2: React.FC = () => {
 
   // Render based on view mode
   if (viewMode === 'simple') {
-    return (
-      <SimpleLoyalty
-        loyaltyProgram={loyaltyProgram}
-        loyaltyRewards={loyaltyRewards}
-        businessId={effectiveBusinessId}
-        onProgramSaved={handleProgramSaved}
-        onRewardsChange={handleRewardsChange}
-        onBackClick={() => navigate('/business/dashboard')}
-      />
-    );
+    // For simple mode, we need to check if we have a program and use ViewProps pattern
+    if (loyaltyProgram) {
+      return (
+        <SimpleLoyalty
+          program={loyaltyProgram}
+          onInviteMember={() => {
+            // Handle invite member action
+            console.log('Invite member action triggered');
+          }}
+          onScanQR={() => {
+            // Handle scan QR action  
+            console.log('Scan QR action triggered');
+          }}
+          onReward={() => {
+            // Handle reward action
+            console.log('Reward action triggered');
+          }}
+        />
+      );
+    } else {
+      // No program exists, show simple creation interface
+      return (
+        <SimpleLoyalty
+          loyaltyProgram={loyaltyProgram}
+          loyaltyRewards={loyaltyRewards}
+          businessId={effectiveBusinessId}
+          onProgramSaved={handleProgramSaved}
+          onRewardsChange={handleRewardsChange}
+          onBackClick={() => navigate('/business/dashboard')}
+        />
+      );
+    }
   }
 
   // Default detailed view
