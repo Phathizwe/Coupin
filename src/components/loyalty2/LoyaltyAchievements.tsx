@@ -20,7 +20,13 @@ const LoyaltyAchievements: React.FC<LoyaltyAchievementsProps> = ({ program }) =>
       try {
         setLoading(true);
         const achievementsData = await getLoyaltyAchievements(program.businessId, program.id);
-        setAchievements(achievementsData);
+        
+        // Deduplicate achievements by id
+        const uniqueAchievements = achievementsData.filter((achievement, index, self) => 
+          index === self.findIndex(a => a.id === achievement.id)
+        );
+        
+        setAchievements(uniqueAchievements);
       } catch (error) {
         console.error('Error fetching loyalty achievements:', error);
       } finally {
